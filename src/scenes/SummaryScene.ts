@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
+import { sfx } from '../audio';
 import type { NextDayEvents } from '../logic/day';
+import { lockedProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
 import { session } from '../session';
 import { COLOURS, WIDTH, backdrop, button, label } from '../ui';
@@ -11,8 +13,9 @@ export class SummaryScene extends Phaser.Scene {
     super('Summary');
   }
 
-  create({ summary, delivered, starterBox }: NextDayEvents) {
+  create({ summary, starterBox }: NextDayEvents) {
     this.confirmingReset = false;
+    sfx.dayEnd();
     backdrop(this);
     label(this, WIDTH / 2, 18, `DAY ${summary.day} CLOSED`, COLOURS.gold, 'center');
 
@@ -32,13 +35,18 @@ export class SummaryScene extends Phaser.Scene {
     this.add.rectangle(10, 128, WIDTH - 20, 1, COLOURS.border).setOrigin(0);
     label(this, 10, 136, 'PROFIT');
     label(this, WIDTH - 10, 136, formatCents(summary.profit), summary.profit >= 0 ? COLOURS.green : COLOURS.red, 'right');
-    label(this, 10, 152, 'BALANCE');
-    label(this, WIDTH - 10, 152, formatCents(summary.balance), COLOURS.gold, 'right');
-    if (summary.newBest) label(this, WIDTH / 2, 172, 'NEW BEST DAY!', COLOURS.gold, 'center');
+    if (summary.licenceSpend > 0) {
+      label(this, 10, 150, 'LICENCES', COLOURS.dim);
+      label(this, WIDTH - 10, 150, formatCents(-summary.licenceSpend), COLOURS.white, 'right');
+    }
+    label(this, 10, 164, 'BALANCE');
+    label(this, WIDTH - 10, 164, formatCents(summary.balance), COLOURS.gold, 'right');
+    const next = lockedProducts(session.state)[0];
+    if (next) label(this, WIDTH / 2, 182, `NEXT LICENCE: ${next.short} ${formatCents(next.licence!)}`, COLOURS.dim, 'center');
+    if (summary.newBest) label(this, WIDTH / 2, 30, 'NEW BEST DAY!', COLOURS.green, 'center');
 
     button(this, 48, 214, 120, 40, 'NEXT DAY', () => {
       if (starterBox) session.toast('SUPPLIER SENT A FREE BOX', 4000);
-      else if (delivered > 0) session.toast(`DELIVERY: ${delivered} ITEMS`, 4000);
       this.toNextDay();
     }, COLOURS.accent);
 

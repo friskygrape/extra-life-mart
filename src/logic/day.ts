@@ -1,5 +1,4 @@
-import { PRODUCTS } from '../data/products';
-import { deliverOrders } from './orders';
+import { unlockedProducts } from './licences';
 import { emptyStats, type DayStats, type GameState } from './state';
 
 export interface DaySummary extends DayStats {
@@ -22,7 +21,7 @@ function totalUnits(counts: Record<string, number>): number {
 /** If nothing can be sold or bought, the supplier sends a free box so the run can't get stuck. */
 export function applyBrokeSafeguard(state: GameState): boolean {
   const onShelves = state.shelves.reduce((sum, s) => sum + s.qty, 0);
-  const cheapest = Math.min(...PRODUCTS.map((p) => p.wholesale));
+  const cheapest = Math.min(...unlockedProducts(state).map((p) => p.wholesale));
   const stuck =
     onShelves === 0 &&
     totalUnits(state.stockroom) === 0 &&
@@ -35,11 +34,10 @@ export function applyBrokeSafeguard(state: GameState): boolean {
 
 export interface NextDayEvents {
   summary: DaySummary;
-  delivered: number;
   starterBox: boolean;
 }
 
-/** Closes the books on today and sets up tomorrow morning. */
+/** Closes the books on today and sets up tomorrow. Undelivered orders stay on their way. */
 export function endDay(state: GameState): NextDayEvents {
   const profit = dayProfit(state.stats);
   const newBest = profit > 0 && (state.bestProfit === null || profit > state.bestProfit);
@@ -47,7 +45,6 @@ export function endDay(state: GameState): NextDayEvents {
   const summary: DaySummary = { ...state.stats, day: state.day, profit, balance: state.balance, newBest };
   state.day += 1;
   state.stats = emptyStats();
-  const delivered = deliverOrders(state);
   const starterBox = applyBrokeSafeguard(state);
-  return { summary, delivered, starterBox };
+  return { summary, starterBox };
 }

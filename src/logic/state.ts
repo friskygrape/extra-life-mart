@@ -1,5 +1,5 @@
 import { SHELF_SLOTS } from '../data/shelves';
-import type { ProductKind } from '../data/products';
+import { PRODUCTS, type ProductKind } from '../data/products';
 
 export interface ShelfState {
   id: string;
@@ -11,6 +11,7 @@ export interface ShelfState {
 export interface DayStats {
   revenue: number;
   orderSpend: number;
+  licenceSpend: number;
   overpaid: number;
   missedSales: number;
   customersServed: number;
@@ -25,12 +26,13 @@ export interface GameState {
   shelves: ShelfState[];
   stats: DayStats;
   bestProfit: number | null;
+  unlocked: string[];
 }
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export function emptyStats(): DayStats {
-  return { revenue: 0, orderSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
+  return { revenue: 0, orderSpend: 0, licenceSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
 }
 
 export function newGame(): GameState {
@@ -43,5 +45,6 @@ export function newGame(): GameState {
     shelves: SHELF_SLOTS.map((s) => ({ id: s.id, kind: s.kind, productId: null, qty: 0 })),
     stats: emptyStats(),
     bestProfit: null,
+    unlocked: PRODUCTS.filter((p) => !p.licence).map((p) => p.id),
   };
 }

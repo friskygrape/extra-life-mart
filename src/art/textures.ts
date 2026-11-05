@@ -55,7 +55,7 @@ function outline(c: Ctx, w: number, h: number, color: string) {
 
 function disc(c: Ctx, color: string, cx: number, cy: number, r: number) {
   for (let y = -r; y <= r; y++) {
-    const half = Math.floor(Math.sqrt(r * r - y * y));
+    const half = Math.floor(Math.sqrt((r + 0.5) ** 2 - y * y));
     rect(c, color, cx - half, cy + y, half * 2 + 1, 1);
   }
 }
@@ -470,8 +470,120 @@ function drawProducts(scene: Phaser.Scene) {
   }
 }
 
+// ---- Money, boxes and small props -----------------------------------------
+
+const BILLS: Record<number, { base: string; dark: string; light: string }> = {
+  2000: { base: '#5f9a63', dark: '#2f6b3f', light: '#a9d39f' },
+  1000: { base: '#4f9490', dark: '#27615f', light: '#a0d6cd' },
+  500: { base: '#5d7fb3', dark: '#35507e', light: '#b0c6e4' },
+  100: { base: '#8f9c62', dark: '#5c6a35', light: '#cdd6a3' },
+};
+
+const COINS: Record<number, { r: number; base: string; dark: string; light: string }> = {
+  25: { r: 18, base: '#b9bfc9', dark: '#6f7686', light: '#e8ecf2' },
+  10: { r: 14, base: '#c3c8d0', dark: '#7a8090', light: '#eef0f4' },
+  5: { r: 16, base: '#98a0a8', dark: '#5c6470', light: '#c9ced4' },
+  1: { r: 13, base: '#c67f4f', dark: '#804a28', light: '#eeb78e' },
+};
+
+function drawMoney(scene: Phaser.Scene) {
+  for (const [cents, b] of Object.entries(BILLS)) {
+    canvasTexture(scene, `money_${cents}`, 50, 34, (c) => {
+      rect(c, b.dark, 0, 0, 50, 34);
+      rect(c, b.base, 1, 1, 48, 32);
+      rect(c, b.dark, 3, 3, 44, 1);
+      rect(c, b.dark, 3, 30, 44, 1);
+      rect(c, b.dark, 3, 3, 1, 28);
+      rect(c, b.dark, 46, 3, 1, 28);
+      // Engraved corners
+      [[5, 5], [41, 5], [5, 25], [41, 25]].forEach(([x, y]) => {
+        rect(c, b.light, x, y, 4, 4);
+        rect(c, b.dark, x + 1, y + 1, 2, 2);
+      });
+      // Fine lines behind the centre panel
+      for (let y = 6; y < 29; y += 3) rect(c, b.light, 10, y, 30, 1);
+      // Centre panel, which the amount sits on
+      rect(c, '#efe8cf', 12, 9, 26, 16);
+      rect(c, '#efe8cf', 10, 11, 30, 12);
+      rect(c, b.dark, 12, 9, 26, 1);
+      rect(c, b.dark, 12, 24, 26, 1);
+    });
+  }
+  for (const [cents, m] of Object.entries(COINS)) {
+    const size = m.r * 2 + 1;
+    canvasTexture(scene, `money_${cents}`, size, size, (c) => {
+      disc(c, m.dark, m.r, m.r, m.r);
+      disc(c, m.base, m.r, m.r, m.r - 1);
+      disc(c, m.light, m.r - 1, m.r - 1, m.r - 3);
+      disc(c, m.base, m.r, m.r, m.r - 3);
+    });
+  }
+}
+
+/** The colour a denomination shows as in the change tray. */
+export function moneyColour(cents: number): number {
+  const hex = cents >= 100 ? BILLS[cents].base : COINS[cents].base;
+  return parseInt(hex.slice(1), 16);
+}
+
+function drawProps(scene: Phaser.Scene) {
+  canvasTexture(scene, 'box_closed', 28, 24, (c) => {
+    rect(c, '#14100e', 0, 2, 28, 22);
+    rect(c, '#b98d55', 1, 3, 26, 20);
+    rect(c, '#d4aa70', 1, 3, 26, 8);
+    rect(c, '#8f6a3b', 1, 10, 26, 1);
+    rect(c, '#e8dcb8', 11, 3, 6, 20);
+    rect(c, '#c9bb92', 15, 3, 2, 20);
+    rect(c, '#8f6a3b', 20, 15, 5, 5);
+    rect(c, '#efe8cf', 21, 16, 3, 1);
+    rect(c, '#efe8cf', 21, 18, 3, 1);
+  });
+  canvasTexture(scene, 'box_open', 28, 24, (c) => {
+    rect(c, '#14100e', 2, 8, 24, 16);
+    rect(c, '#b98d55', 3, 9, 22, 14);
+    rect(c, '#3b2618', 4, 9, 20, 4);
+    rect(c, '#8f6a3b', 3, 13, 22, 1);
+    // Flaps folded out to the sides
+    rect(c, '#14100e', 0, 3, 8, 7);
+    rect(c, '#d4aa70', 1, 4, 6, 5);
+    rect(c, '#14100e', 20, 3, 8, 7);
+    rect(c, '#d4aa70', 21, 4, 6, 5);
+    rect(c, '#e8dcb8', 11, 14, 6, 9);
+  });
+  canvasTexture(scene, 'crate', 20, 18, (c) => {
+    rect(c, '#14100e', 0, 0, 20, 18);
+    rect(c, '#8f6a3b', 1, 1, 18, 16);
+    rect(c, '#b98d55', 1, 1, 18, 2);
+    rect(c, '#6d4f2b', 1, 5, 18, 1);
+    rect(c, '#6d4f2b', 1, 11, 18, 1);
+    rect(c, '#6d4f2b', 3, 1, 1, 16);
+    rect(c, '#6d4f2b', 16, 1, 1, 16);
+  });
+  canvasTexture(scene, 'sound_on', 11, 9, (c) => {
+    rect(c, '#ece3cc', 0, 3, 2, 3);
+    rect(c, '#ece3cc', 2, 2, 1, 5);
+    rect(c, '#ece3cc', 3, 1, 1, 7);
+    rect(c, '#ece3cc', 4, 0, 1, 9);
+    rect(c, '#8fe0a0', 6, 3, 1, 3);
+    rect(c, '#8fe0a0', 8, 2, 1, 5);
+    rect(c, '#8fe0a0', 10, 1, 1, 7);
+  });
+  canvasTexture(scene, 'sound_off', 11, 9, (c) => {
+    rect(c, '#93a3a0', 0, 3, 2, 3);
+    rect(c, '#93a3a0', 2, 2, 1, 5);
+    rect(c, '#93a3a0', 3, 1, 1, 7);
+    rect(c, '#93a3a0', 4, 0, 1, 9);
+    for (let i = 0; i < 5; i++) {
+      rect(c, '#f0705f', 6 + i, 2 + i, 1, 1);
+      rect(c, '#f0705f', 10 - i, 2 + i, 1, 1);
+    }
+  });
+}
+
 export function createTextures(scene: Phaser.Scene): void {
   drawShack(scene);
+  drawMoney(scene);
+  drawProps(scene);
   drawProducts(scene);
   LOOKS.forEach((look, i) => canvasTexture(scene, `cust_${i}`, PORTRAIT_W, PORTRAIT_H, (c) => drawPortrait(c, look)));
 }

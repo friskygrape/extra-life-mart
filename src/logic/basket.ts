@@ -31,8 +31,19 @@ export function checkHandOver(wanted: string[], table: string[], isOnShelf: (id:
   return table.length === 0 ? { status: 'nothing', missed } : { status: 'ok', missed };
 }
 
-/** Each requested product once, with how many are wanted and how many are on the table. */
-export function requestLines(wanted: string[], table: string[]): { productId: string; qty: number; done: boolean }[] {
+export interface RequestLine {
+  productId: string;
+  qty: number;
+  done: boolean;
+  /** Not enough on the table, and none left on the shelves. */
+  soldOut: boolean;
+}
+
+/** Each requested product once, with how many are wanted and whether it can still be supplied. */
+export function requestLines(wanted: string[], table: string[], isOnShelf: (id: string) => boolean): RequestLine[] {
   const have = tally(table);
-  return [...tally(wanted)].map(([productId, qty]) => ({ productId, qty, done: (have.get(productId) ?? 0) >= qty }));
+  return [...tally(wanted)].map(([productId, qty]) => {
+    const done = (have.get(productId) ?? 0) >= qty;
+    return { productId, qty, done, soldOut: !done && !isOnShelf(productId) };
+  });
 }

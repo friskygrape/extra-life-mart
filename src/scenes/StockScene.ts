@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
-import { PRODUCTS, SHELF_CAPACITY, getProduct } from '../data/products';
+import { SHELF_CAPACITY, getProduct } from '../data/products';
+import { sfx } from '../audio';
 import { emptyShelf, stockShelf } from '../logic/inventory';
+import { unlockedProducts } from '../logic/licences';
 import { session } from '../session';
 import { COLOURS, WIDTH, backdrop, button, label } from '../ui';
 
@@ -49,10 +51,10 @@ export class StockScene extends Phaser.Scene {
     }
 
     this.track(this.add.rectangle(6, 54, WIDTH - 12, 1, COLOURS.border).setOrigin(0));
-    this.track(label(this, 6, 60, 'FROM THE BACK ROOM', COLOURS.dim));
+    this.track(label(this, 6, 60, 'FROM YOUR STOCK', COLOURS.dim));
 
     const room = capacity - shelf.qty;
-    PRODUCTS.filter((p) => p.kind === shelf.kind).forEach((product, i) => {
+    unlockedProducts(session.state).filter((p) => p.kind === shelf.kind).forEach((product, i) => {
       const y = 72 + i * 38;
       const have = session.state.stockroom[product.id] ?? 0;
       const usable = have > 0 && room > 0 && (!shelf.productId || shelf.productId === product.id);
@@ -70,11 +72,14 @@ export class StockScene extends Phaser.Scene {
       this.scene.stop();
       this.scene.launch('Order');
     }, COLOURS.accent));
-    this.track(label(this, WIDTH / 2, 352, 'ORDERS ARRIVE NEXT MORNING', COLOURS.dim, 'center'));
+    this.track(label(this, WIDTH / 2, 352, 'UNLOCK MORE WITH LICENCES', COLOURS.dim, 'center'));
   }
 
   private add1(productId: string, qty: number) {
-    if (stockShelf(session.state, this.shelfId, productId, qty) === 'ok') this.changed();
+    if (stockShelf(session.state, this.shelfId, productId, qty) === 'ok') {
+      sfx.pop();
+      this.changed();
+    }
   }
 
   private changed() {

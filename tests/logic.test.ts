@@ -5,6 +5,7 @@ import { checkHandOver, requestLines } from '../src/logic/basket';
 import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
 import { buildWishlist } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
+import { buyLicence, lockedProducts } from '../src/logic/licences';
 import { emptyShelf, findShelfWith, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
 import { customerTender, formatCents } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder } from '../src/logic/orders';
@@ -122,15 +123,15 @@ describe('shelves', () => {
 
 describe('day cycle', () => {
   it('profit is revenue minus overpayment and stock bought', () => {
-    expect(dayProfit({ revenue: 1000, overpaid: 100, orderSpend: 300, missedSales: 2, customersServed: 3 })).toBe(600);
+    expect(dayProfit({ revenue: 1000, overpaid: 100, orderSpend: 300, licenceSpend: 0, missedSales: 2, customersServed: 3 })).toBe(600);
   });
-  it('ending a day summarizes, delivers and advances', () => {
+  it('ending a day summarizes and advances, and orders stay on their way', () => {
     const s = newGame();
     placeOrder(s, { jerky: 1 });
     completeSale(s, 500, 0);
-    const { summary, delivered } = endDay(s);
-    expect(summary).toMatchObject({ day: 1, revenue: 500, profit: 500 - 130, newBest: true });
-    expect(delivered).toBe(1);
+    const { summary } = endDay(s);
+    expect(summary).toMatchObject({ day: 1, revenue: 500, profit: 500 - 150, newBest: true });
+    expect(s.pendingOrders).toEqual({ jerky: 1 });
     expect(s.day).toBe(2);
     expect(s.stats.revenue).toBe(0);
   });
@@ -164,7 +165,7 @@ describe('broke safeguard', () => {
     expect(s.stockroom).toEqual(STARTER_BOX);
   });
   it.each([
-    ['money for the cheapest item', (s: ReturnType<typeof newGame>) => void (s.balance = 50)],
+    ['money for the cheapest item', (s: ReturnType<typeof newGame>) => void (s.balance = 100)],
     ['stock in the stockroom', (s: ReturnType<typeof newGame>) => void (s.stockroom.chips = 1)],
     ['an order on the way', (s: ReturnType<typeof newGame>) => void (s.pendingOrders.chips = 1)],
     ['stock on a shelf', (s: ReturnType<typeof newGame>) => void Object.assign(s.shelves[0], { productId: 'chips', qty: 1 })],
@@ -195,12 +196,12 @@ describe('save', () => {
 });
 
 describe('wishlists', () => {
-  it('have 1 to 4 real products', () => {
+  it('have 1 to 4 products, all of them unlocked', () => {
     for (let i = 0; i < 200; i++) {
-      const list = buildWishlist();
+      const list = buildWishlist(newGame().unlocked);
       expect(list.length).toBeGreaterThanOrEqual(1);
       expect(list.length).toBeLessThanOrEqual(4);
-      list.forEach((id) => expect(getProduct(id)).toBeTruthy());
+      list.forEach((id) => expect(getProduct(id).licence).toBeUndefined());
     }
   });
 });
@@ -228,9 +229,10 @@ describe('handing items over', () => {
     expect(checkHandOver(['chips'], [], () => true).status).toBe('still-on-shelf');
   });
   it('groups the request and marks finished lines', () => {
-    expect(requestLines(['chips', 'chips', 'soda'], ['chips', 'soda'])).toEqual([
-      { productId: 'chips', qty: 2, done: false },
-      { productId: 'soda', qty: 1, done: true },
+    expect(requestLines(['chips', 'chips', 'soda', 'pie'], ['chips', 'soda'], (id) => id === 'chips')).toEqual([
+      { productId: 'chips', qty: 2, done: false, soldOut: false },
+      { productId: 'soda', qty: 1, done: true, soldOut: false },
+      { productId: 'pie', qty: 1, done: false, soldOut: true },
     ]);
   });
 });
@@ -256,5 +258,44 @@ describe('putting items back', () => {
     s.stockroom.chips = 0;
     returnItem(s, 'chips');
     expect(s.stockroom.chips).toBe(1);
+  });
+});
+
+describe('licences', () => {
+  it('starts with only the unlicensed products unlocked', () => {
+    const s = newGame();
+    expect(s.unlocked).toEqual(['chips', 'soda', 'choco', 'noodle', 'golf', 'mops']);
+    expect(lockedProducts(s)[0].id).toBe('jerky');
+  });
+  it('charges for a licence and unlocks the product', () => {
+    const s = newGame();
+    expect(buyLicence(s, 'jerky')).toBe(true);
+    expect(s.balance).toBe(20000 - 7500);
+    expect(s.unlocked).toContain('jerky');
+    expect(s.stats.licenceSpend).toBe(7500);
+  });
+  it('refuses licences you cannot afford or already own', () => {
+    const s = newGame();
+    expect(buyLicence(s, 'cave')).toBe(false);
+    expect(buyLicence(s, 'chips')).toBe(false);
+    expect(s.balance).toBe(20000);
+  });
+  it('a licence purchase does not count against the day profit', () => {
+    const s = newGame();
+    buyLicence(s, 'jerky');
+    expect(dayProfit(s.stats)).toBe(0);
+  });
+  it('customers can want a product once it is licensed', () => {
+    const s = newGame();
+    s.unlocked = ['jerky'];
+    expect(buildWishlist(s.unlocked)).toContain('jerky');
+  });
+  it('every licensed product earns more per sale than any starter of its kind', () => {
+    const margin = (id: string) => getProduct(id).retail - getProduct(id).wholesale;
+    const starters = newGame().unlocked;
+    for (const locked of lockedProducts(newGame())) {
+      const best = Math.max(...starters.filter((id) => getProduct(id).kind === locked.kind).map(margin));
+      expect(margin(locked.id)).toBeGreaterThan(best);
+    }
   });
 });

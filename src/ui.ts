@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { FONT_KEY } from './art/font';
+import { sfx } from './audio';
 
 export const WIDTH = 216;
 export const HEIGHT = 384;
@@ -55,6 +56,7 @@ export function button(
   text: string,
   onTap: () => void,
   fill = COLOURS.button,
+  tapSound: (() => void) | null = sfx.click,
 ): Button {
   const rect = scene.add.rectangle(x, y, w, h, fill).setOrigin(0).setStrokeStyle(1, COLOURS.border);
   rect.setInteractive({ useHandCursor: true });
@@ -65,7 +67,9 @@ export function button(
   rect.on('pointerout', () => paint(false));
   rect.on('pointerup', () => {
     paint(false);
-    if (enabled) onTap();
+    if (!enabled) return;
+    tapSound?.();
+    onTap();
   });
   return {
     rect,

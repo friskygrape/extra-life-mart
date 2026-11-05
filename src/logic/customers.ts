@@ -2,13 +2,14 @@ import { PRODUCTS } from '../data/products';
 
 const GAME_CHANCE = 0.25;
 
-/** 1 to 4 product ids. Mostly food, sometimes a game, and repeats are allowed. */
-export function buildWishlist(rng: () => number = Math.random): string[] {
-  const foods = PRODUCTS.filter((p) => p.kind === 'food');
-  const games = PRODUCTS.filter((p) => p.kind === 'game');
+/** 1 to 4 product ids from what you're licensed to sell. Mostly food, sometimes a game. */
+export function buildWishlist(unlocked: string[], rng: () => number = Math.random): string[] {
+  const available = PRODUCTS.filter((p) => unlocked.includes(p.id));
+  const foods = available.filter((p) => p.kind === 'food');
+  const games = available.filter((p) => p.kind === 'game');
   const count = 1 + Math.floor(rng() * 4);
   return Array.from({ length: count }, () => {
-    const pool = rng() < GAME_CHANCE ? games : foods;
+    const pool = games.length > 0 && (foods.length === 0 || rng() < GAME_CHANCE) ? games : foods;
     return pool[Math.floor(rng() * pool.length)].id;
   });
 }

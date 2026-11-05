@@ -7,7 +7,7 @@ export function cartCost(cart: Cart): number {
   return Object.entries(cart).reduce((sum, [id, qty]) => sum + getProduct(id).wholesale * qty, 0);
 }
 
-/** Pays for a cart now; the goods arrive at the next delivery. Returns false if you can't afford it. */
+/** Pays for a cart now; the goods arrive in a delivery box. Returns false if you can't afford it. */
 export function placeOrder(state: GameState, cart: Cart): boolean {
   const cost = cartCost(cart);
   if (cost <= 0 || cost > state.balance) return false;

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { audioStatus, unlockAudio } from './audio';
 import { BootScene } from './scenes/BootScene';
 import { OrderScene } from './scenes/OrderScene';
 import { RegisterScene } from './scenes/RegisterScene';
@@ -28,9 +29,10 @@ function fitToScreen() {
   game.scale.setZoom(Math.max(1, Math.floor(fit * dpr * 2) / 2) / dpr);
 }
 
+unlockAudio();
 game.events.once(Phaser.Core.Events.READY, fitToScreen);
 window.addEventListener('resize', fitToScreen);
 
 if (import.meta.env.DEV) {
-  Object.assign(window, { __game: game, __session: session });
+  Object.assign(window, { __game: game, __session: session, __audio: audioStatus });
 }
