@@ -1,0 +1,10 @@
+{
+  "name": "Extra Life Mart",
+  "short_name": "Extra Life",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1626",
+  "theme_color": "#1a1626",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

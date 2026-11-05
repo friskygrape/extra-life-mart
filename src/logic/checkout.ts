@@ -1,0 +1,23 @@
+import type { GameState } from './state';
+
+export type CashResult = { status: 'short'; missing: number } | { status: 'exact' } | { status: 'over'; extra: number };
+
+/** Short change is refused; handing over too much goes through and costs the shop the difference. */
+export function checkChange(total: number, tendered: number, given: number): CashResult {
+  const due = tendered - total;
+  if (given < due) return { status: 'short', missing: due - given };
+  if (given === due) return { status: 'exact' };
+  return { status: 'over', extra: given - due };
+}
+
+/** The card terminal must be keyed with the exact total; anything else is declined. */
+export function checkCard(total: number, entered: number): boolean {
+  return total === entered;
+}
+
+export function completeSale(state: GameState, total: number, overpaid: number): void {
+  state.balance += total - overpaid;
+  state.stats.revenue += total;
+  state.stats.overpaid += overpaid;
+  state.stats.customersServed += 1;
+}
