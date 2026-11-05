@@ -7,32 +7,66 @@ import { ShackScene } from './scenes/ShackScene';
 import { StockScene } from './scenes/StockScene';
 import { SummaryScene } from './scenes/SummaryScene';
 import { session } from './session';
-import { HEIGHT, WIDTH } from './ui';
+import { computeLayout, setLayout, L, type Layout } from './layout';
+
+function readSafeArea() {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    safeTop: parseFloat(style.getPropertyValue('--safe-top')) || 0,
+    safeBottom: parseFloat(style.getPropertyValue('--safe-bottom')) || 0,
+  };
+}
+
+function measure(): Layout {
+  const parent = document.getElementById('game')!;
+  return computeLayout({ width: parent.clientWidth, height: parent.clientHeight, dpr: window.devicePixelRatio || 1, ...readSafeArea() });
+}
+
+setLayout(measure());
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: WIDTH,
-  height: HEIGHT,
-  backgroundColor: '#1a1626',
+  width: L.W,
+  height: L.H,
+  backgroundColor: '#1b3346',
   pixelArt: true,
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE },
   scene: [BootScene, ShackScene, OrderScene, StockScene, RegisterScene, SummaryScene],
 });
 
-/** Scale to fill the screen, snapped to half device pixels to keep the art pixels crisp and even. */
-function fitToScreen() {
+let rebuildPending = false;
+
+/**
+ * Same shape as before: just rezoom. A different shape needs a new layout, which waits for
+ * the morning so a sale is never interrupted. Until then the current game scales to fit.
+ */
+function onResize() {
+  const next = measure();
+  if (next.W === L.W && next.H === L.H) {
+    rebuildPending = false;
+    game.scale.setZoom(next.zoom);
+    return;
+  }
+  rebuildPending = true;
   const parent = document.getElementById('game')!;
-  const dpr = window.devicePixelRatio || 1;
-  const fit = Math.min(parent.clientWidth / WIDTH, parent.clientHeight / HEIGHT);
-  game.scale.setZoom(Math.max(1, Math.floor(fit * dpr * 2) / 2) / dpr);
+  game.scale.setZoom(Math.min(parent.clientWidth / L.W, parent.clientHeight / L.H));
+  if (session.phase === 'morning' && !session.modal) window.location.reload();
 }
 
+session.events.on('begin-day', () => {
+  if (rebuildPending) window.location.reload();
+});
+
 unlockAudio();
-game.events.once(Phaser.Core.Events.READY, fitToScreen);
-window.addEventListener('resize', fitToScreen);
+game.events.once(Phaser.Core.Events.READY, () => game.scale.setZoom(L.zoom));
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+  window.clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(onResize, 250);
+});
 
 if (import.meta.env.DEV) {
-  Object.assign(window, { __game: game, __session: session, __audio: audioStatus });
+  Object.assign(window, { __game: game, __session: session, __audio: audioStatus, __layout: L });
 }

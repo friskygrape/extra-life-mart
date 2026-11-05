@@ -8,7 +8,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image('beach', 'beach.png');
+    for (const scene of ['beach', 'beach_dusk', 'beach_night']) this.load.image(scene, `${scene}.png`);
+    for (let i = 0; i < 2; i++) this.load.image(`walker_${i}`, `customers/walker${i}.png`);
     for (let i = 0; i < CUSTOMER_LOOKS; i++) this.load.image(`cust_${i}`, `customers/c${i}.png`);
   }
 

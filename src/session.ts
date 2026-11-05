@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { clockLabel } from './logic/clock';
 import { loadGame, saveGame, clearSave, type SaveStore } from './logic/save';
 import { newGame, type GameState } from './logic/state';
 
@@ -58,11 +59,13 @@ class Session {
     this.messageUntil = performance.now() + ms;
   }
 
-  /** 9:00 at opening to 17:00 at closing. */
+  /** How far through the day we are, from 0 at opening to 1 at closing. */
+  dayFraction(): number {
+    return this.phase === 'morning' ? 0 : Math.min(1, this.clock / this.dayLength);
+  }
+
   clockLabel(): string {
-    const fraction = this.phase === 'morning' ? 0 : Math.min(1, this.clock / this.dayLength);
-    const minutes = 9 * 60 + Math.floor((fraction * 8 * 60) / 10) * 10;
-    return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+    return clockLabel(this.dayFraction());
   }
 }
 

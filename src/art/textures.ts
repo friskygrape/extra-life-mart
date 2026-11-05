@@ -1,11 +1,9 @@
 import Phaser from 'phaser';
-import { WIDTH } from '../ui';
+import { L } from '../layout';
 
 type Ctx = CanvasRenderingContext2D;
 
-/** Exactly the size of a panel on the character sheet, so its art is shown pixel for pixel. */
-export const WINDOW = { x: 37, y: 45, w: 141, h: 113 };
-export const CUSTOMER_LOOKS = 6;
+export const CUSTOMER_LOOKS = 12;
 const COLOUR_STRIP = '#1b3346';
 
 const rect = (c: Ctx, color: string, x: number, y: number, w = 1, h = 1) => {
@@ -55,46 +53,50 @@ function disc(c: Ctx, color: string, cx: number, cy: number, r: number) {
 
 // ---- The shop -------------------------------------------------------------
 
-/** The wooden plate along the bottom of each shelf, which shows the label. */
-function drawShelfCubby(c: Ctx, rng: () => number, x: number, y: number) {
-  rect(c, '#b98a58', x, y, 54, 49);
-  rect(c, '#dcb483', x, y, 54, 1);
-  rect(c, '#8a6240', x + 1, y + 1, 52, 37);
-  rect(c, '#6f4d31', x + 1, y + 1, 52, 4);
-  for (let py = y + 9; py < y + 38; py += 8) rect(c, '#7d5838', x + 1, py, 52, 1);
-  speckle(c, rng, x + 1, y + 5, 52, 33, ['#7d5838', '#97703f'], 0.04);
-  rect(c, '#e3bf8e', x, y + 38, 54, 2);
-  rect(c, '#fbf1d8', x + 1, y + 40, 52, 8);
+function drawShelfCubby(c: Ctx, rng: () => number, x: number, y: number, w: number, h: number) {
+  rect(c, '#b98a58', x, y, w, h);
+  rect(c, '#dcb483', x, y, w, 1);
+  rect(c, '#8a6240', x + 1, y + 1, w - 2, h - 12);
+  rect(c, '#6f4d31', x + 1, y + 1, w - 2, 4);
+  for (let py = y + 9; py < y + h - 11; py += 8) rect(c, '#7d5838', x + 1, py, w - 2, 1);
+  speckle(c, rng, x + 1, y + 5, w - 2, h - 16, ['#7d5838', '#97703f'], 0.04);
+  rect(c, '#e3bf8e', x, y + h - 11, w, 2);
+  rect(c, '#fbf1d8', x + 1, y + h - 9, w - 2, 8);
 }
 
+/** Left edge of a shelf column, so four columns always span the full width. */
+export const columnX = (col: number) => Math.round((col * L.W) / 4);
+
 function drawShop(scene: Phaser.Scene) {
-  canvasTexture(scene, 'shop', WIDTH, 384, (c) => {
+  const { W, H, windowX: x, windowY: y, windowW: w, windowH: h } = L;
+  canvasTexture(scene, 'shop', W, H, (c) => {
     const rng = seeded(7);
     // Painted seafoam boards
-    rect(c, '#8ad1c2', 0, 0, WIDTH, 160);
-    for (let y = 0; y < 160; y += 7) {
-      rect(c, '#6fbcae', 0, y + 6, WIDTH, 1);
-      rect(c, '#a3e0d3', 0, y, WIDTH, 1);
+    rect(c, '#8ad1c2', 0, 0, W, L.counterTop + 2);
+    for (let by = 0; by < L.counterTop; by += 7) {
+      rect(c, '#6fbcae', 0, by + 6, W, 1);
+      rect(c, '#a3e0d3', 0, by, W, 1);
     }
-    speckle(c, rng, 0, 0, WIDTH, 160, ['#7cc6b8', '#9bdccf'], 0.05);
+    speckle(c, rng, 0, 0, W, L.counterTop, ['#7cc6b8', '#9bdccf'], 0.05);
 
-    // Rope down the left side; a life ring on the right
-    for (let y = 18; y < 154; y += 3) {
-      rect(c, '#d9b98a', 15, y, 3, 2);
-      rect(c, '#a98a5f', 16, y + 2, 2, 1);
+    // Rope down one side; a life ring on the other
+    for (let ry = L.hudH + 3; ry < L.counterTop - 4; ry += 3) {
+      rect(c, '#d9b98a', 15, ry, 3, 2);
+      rect(c, '#a98a5f', 16, ry + 2, 2, 1);
     }
-    disc(c, '#fbf1d8', 197, 128, 8);
-    disc(c, '#8ad1c2', 197, 128, 4);
-    [[189, 126], [201, 126], [195, 120], [195, 132]].forEach(([rx, ry]) => rect(c, '#e8604f', rx, ry, 4, 4));
+    const ringX = W - 18;
+    const ringY = y + h - 26;
+    disc(c, '#fbf1d8', ringX, ringY, 8);
+    disc(c, '#8ad1c2', ringX, ringY, 4);
+    [[-8, -2], [4, -2], [-2, -8], [-2, 4]].forEach(([rx, ry]) => rect(c, '#e8604f', ringX + rx, ringY + ry, 4, 4));
 
     // The shop's name board above the window
-    rect(c, '#5d4630', 34, 18, 147, 21);
-    rect(c, '#a97d4f', 35, 19, 145, 19);
-    rect(c, '#c1955f', 35, 19, 145, 1);
-    for (let i = 0; i < 40; i++) rect(c, '#8a6240', 36 + Math.floor(rng() * 140), 21 + Math.floor(rng() * 16), 3 + Math.floor(rng() * 8), 1);
+    rect(c, '#5d4630', x - 3, L.signY, w + 6, 21);
+    rect(c, '#a97d4f', x - 2, L.signY + 1, w + 4, 19);
+    rect(c, '#c1955f', x - 2, L.signY + 1, w + 4, 1);
+    for (let i = 0; i < 40; i++) rect(c, '#8a6240', x + Math.floor(rng() * (w - 8)), L.signY + 3 + Math.floor(rng() * 16), 3 + Math.floor(rng() * 8), 1);
 
     // White window frame
-    const { x, y, w, h } = WINDOW;
     rect(c, '#b7c8c2', x - 5, y - 5, w + 10, h + 8);
     rect(c, '#fbf6e8', x - 4, y - 4, w + 8, h + 6);
     rect(c, '#d9d3bf', x - 1, y - 1, w + 2, h + 2);
@@ -109,78 +111,131 @@ function drawShop(scene: Phaser.Scene) {
     }
 
     // Driftwood counter
-    rect(c, '#e8c896', 0, 158, WIDTH, 4);
-    rect(c, '#f6dfb6', 0, 158, WIDTH, 1);
-    rect(c, '#d4ad78', 0, 162, WIDTH, 34);
+    const top = L.counterTop;
+    const bottom = L.counterBottom;
+    rect(c, '#e8c896', 0, top, W, 4);
+    rect(c, '#f6dfb6', 0, top, W, 1);
+    rect(c, '#d4ad78', 0, top + 4, W, bottom - top - 10);
     for (let i = 0; i < 90; i++) {
-      rect(c, rng() < 0.5 ? '#c49c68' : '#e0bd8b', Math.floor(rng() * WIDTH), 162 + Math.floor(rng() * 34), 1 + Math.floor(rng() * 8), 1);
+      rect(c, rng() < 0.5 ? '#c49c68' : '#e0bd8b', Math.floor(rng() * W), top + 4 + Math.floor(rng() * (bottom - top - 10)), 1 + Math.floor(rng() * 8), 1);
     }
-    rect(c, '#9c7446', 0, 196, WIDTH, 2);
-    rect(c, '#7a5a38', 0, 198, WIDTH, 4);
-
-    // Cash register
-    rect(c, '#2c2a33', 2, 165, 28, 30);
-    rect(c, '#2f8f8c', 3, 166, 26, 28);
-    rect(c, '#4bb5b0', 3, 166, 26, 2);
-    rect(c, '#123c3d', 6, 169, 20, 7);
-    rect(c, '#9df0b0', 8, 171, 11, 2);
-    for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) rect(c, '#fbf1d8', 6 + col * 5, 179 + row * 3, 3, 2);
-    rect(c, '#1f6a68', 3, 190, 26, 4);
-
-    // Beige desktop computer: monitor and keyboard
-    rect(c, '#2c2a33', 169, 161, 44, 26);
-    rect(c, '#e6dcc2', 170, 162, 42, 24);
-    rect(c, '#f6efdb', 170, 162, 42, 1);
-    rect(c, '#2c2a33', 172, 164, 38, 20);
-    rect(c, '#123c30', 173, 165, 36, 18);
-    rect(c, '#bdb296', 185, 186, 12, 2);
-    rect(c, '#2c2a33', 171, 188, 40, 7);
-    rect(c, '#e6dcc2', 172, 189, 38, 5);
-    for (let ky = 0; ky < 2; ky++) for (let kx = 0; kx < 9; kx++) rect(c, '#9a927c', 173 + kx * 4, 190 + ky * 2, 3, 1);
+    rect(c, '#9c7446', 0, bottom - 6, W, 2);
+    rect(c, '#7a5a38', 0, bottom - 4, W, 5);
 
     // Shelving
-    rect(c, '#7a5a38', 0, 202, WIDTH, 150);
-    for (let row = 0; row < 3; row++) for (let col = 0; col < 4; col++) drawShelfCubby(c, rng, col * 54, 203 + row * 49);
+    rect(c, '#7a5a38', 0, L.shelfTop, W, L.rowH * 3);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 4; col++) {
+        drawShelfCubby(c, rng, columnX(col), L.shelfTop + row * L.rowH, columnX(col + 1) - columnX(col), L.rowH);
+      }
+    }
 
     // Controls strip
-    rect(c, COLOUR_STRIP, 0, 352, WIDTH, 32);
-    rect(c, '#356482', 0, 352, WIDTH, 1);
+    rect(c, COLOUR_STRIP, 0, L.stripTop, W, H - L.stripTop);
+    rect(c, '#356482', 0, L.stripTop, W, 1);
   });
 
   // Painted shutter, closed until you open up
-  canvasTexture(scene, 'shutter', WINDOW.w, WINDOW.h, (c) => {
+  canvasTexture(scene, 'shutter', w, h, (c) => {
     const rng = seeded(33);
-    const { w, h } = WINDOW;
     rect(c, '#e9dcc0', 0, 0, w, h);
-    for (let y = 0; y < h; y += 6) {
-      rect(c, (y / 6) % 8 < 4 ? '#7fc4cf' : '#f4ead2', 0, y, w, 5);
-      rect(c, '#b7a988', 0, y + 5, w, 1);
+    for (let sy = 0; sy < h; sy += 6) {
+      rect(c, (sy / 6) % 8 < 4 ? '#7fc4cf' : '#f4ead2', 0, sy, w, 5);
+      rect(c, '#b7a988', 0, sy + 5, w, 1);
     }
     speckle(c, rng, 0, 0, w, h, ['#c9b994', '#ffffff'], 0.02);
-    // Sign the word CLOSED sits on
-    rect(c, '#7a5a38', 38, 46, 64, 22);
-    rect(c, '#a97d4f', 39, 47, 62, 20);
-    rect(c, '#7a5a38', 42, 38, 1, 8);
-    rect(c, '#7a5a38', 97, 38, 1, 8);
-  });
-
-  canvasTexture(scene, 'waiting', 12, 22, (c) => {
-    disc(c, '#6d5a52', 6, 4, 3);
-    rect(c, '#58719a', 3, 8, 6, 8);
-    rect(c, '#4b4453', 3, 16, 2, 6);
-    rect(c, '#4b4453', 7, 16, 2, 6);
-    outline(c, 12, 22, '#2c2a33');
+    const signX = Math.floor(w / 2) - 32;
+    const signY = Math.floor(h / 2) - 11;
+    rect(c, '#7a5a38', signX, signY, 64, 22);
+    rect(c, '#a97d4f', signX + 1, signY + 1, 62, 20);
+    rect(c, '#7a5a38', signX + 4, signY - 8, 1, 8);
+    rect(c, '#7a5a38', signX + 59, signY - 8, 1, 8);
   });
 
   // Boards across shelf rows you haven't bought yet
-  canvasTexture(scene, 'boards', WIDTH, 49, (c) => {
+  canvasTexture(scene, 'boards', W, L.rowH, (c) => {
     const rng = seeded(55);
-    rect(c, '#5d4630', 0, 0, WIDTH, 49);
-    for (let y = 2; y < 46; y += 9) {
-      rect(c, '#9c7446', 0, y, WIDTH, 7);
-      rect(c, '#b98a58', 0, y, WIDTH, 1);
-      for (let i = 0; i < 40; i++) rect(c, '#8a6240', Math.floor(rng() * WIDTH), y + 2 + Math.floor(rng() * 4), 3 + Math.floor(rng() * 9), 1);
+    rect(c, '#5d4630', 0, 0, W, L.rowH);
+    for (let by = 2; by < L.rowH - 3; by += 9) {
+      rect(c, '#9c7446', 0, by, W, 7);
+      rect(c, '#b98a58', 0, by, W, 1);
+      for (let i = 0; i < 40; i++) rect(c, '#8a6240', Math.floor(rng() * W), by + 2 + Math.floor(rng() * 4), 3 + Math.floor(rng() * 9), 1);
     }
+  });
+
+  // Till: a chunky machine standing on the counter, rising above its top edge
+  canvasTexture(scene, 'till', 40, 54, (c) => {
+    // Screen on a stalk
+    rect(c, '#2c2a33', 12, 0, 22, 15);
+    rect(c, '#3b3a44', 13, 1, 20, 13);
+    rect(c, '#123c3d', 15, 3, 16, 8);
+    rect(c, '#9df0b0', 17, 5, 9, 2);
+    rect(c, '#58b58a', 17, 8, 6, 1);
+    rect(c, '#2c2a33', 20, 15, 6, 4);
+    rect(c, '#1f6a68', 21, 15, 4, 4);
+    // Sloping keypad body
+    rect(c, '#2c2a33', 1, 18, 38, 22);
+    rect(c, '#2f8f8c', 2, 19, 36, 20);
+    rect(c, '#4bb5b0', 2, 19, 36, 2);
+    rect(c, '#24757a', 33, 21, 5, 18);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 4; col++) {
+        rect(c, '#14454a', 5 + col * 6, 23 + row * 5, 5, 4);
+        rect(c, col === 3 ? '#ffc65c' : '#fbf1d8', 5 + col * 6, 23 + row * 5, 5, 3);
+      }
+    }
+    rect(c, '#ef6f5e', 30, 23, 3, 3);
+    // Cash drawer
+    rect(c, '#2c2a33', 0, 40, 40, 14);
+    rect(c, '#1f6a68', 1, 41, 38, 12);
+    rect(c, '#2f8f8c', 1, 41, 38, 2);
+    rect(c, '#123c3d', 15, 45, 10, 2);
+    rect(c, '#fbf1d8', 18, 49, 4, 2);
+  });
+
+  // Beige desktop computer: a big CRT with its keyboard in front
+  canvasTexture(scene, 'computer', 50, 60, (c) => {
+    rect(c, '#2c2a33', 0, 0, 50, 40);
+    rect(c, '#e6dcc2', 1, 1, 48, 38);
+    rect(c, '#f6efdb', 1, 1, 48, 2);
+    rect(c, '#c3b89c', 44, 3, 5, 36);
+    rect(c, '#c3b89c', 1, 35, 48, 4);
+    rect(c, '#2c2a33', 4, 4, 41, 29);
+    rect(c, '#123c30', 5, 5, 39, 27);
+    rect(c, '#1c5243', 5, 5, 39, 2);
+    rect(c, '#9df0b0', 40, 36, 2, 2);
+    rect(c, '#8c8069', 6, 36, 12, 1);
+    // Stand
+    rect(c, '#2c2a33', 17, 40, 16, 5);
+    rect(c, '#bdb296', 18, 40, 14, 4);
+    // Keyboard
+    rect(c, '#2c2a33', 2, 45, 46, 15);
+    rect(c, '#e6dcc2', 3, 46, 44, 13);
+    rect(c, '#f6efdb', 3, 46, 44, 1);
+    for (let ky = 0; ky < 3; ky++) {
+      for (let kx = 0; kx < 10; kx++) rect(c, '#8f8772', 5 + kx * 4, 48 + ky * 3, 3, 2);
+    }
+    rect(c, '#8f8772', 14, 57, 20, 1);
+  });
+
+  // Card terminal that comes up on the counter
+  canvasTexture(scene, 'terminal', 46, 56, (c) => {
+    rect(c, '#2c2a33', 0, 0, 46, 56);
+    rect(c, '#46505c', 1, 1, 44, 54);
+    rect(c, '#5e6a78', 1, 1, 44, 2);
+    rect(c, '#343c46', 41, 3, 4, 52);
+    rect(c, '#2c2a33', 4, 5, 38, 18);
+    rect(c, '#10231c', 5, 6, 36, 16);
+    // Keys
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 3; col++) {
+        const colour = row === 3 ? (['#c9503f', '#d8dee6', '#2f9e6e'] as const)[col] : '#d8dee6';
+        rect(c, '#222830', 6 + col * 12, 26 + row * 7, 10, 6);
+        rect(c, colour, 6 + col * 12, 26 + row * 7, 10, 5);
+      }
+    }
+    // Card reader slot along the bottom
+    rect(c, '#14181c', 6, 53, 34, 1);
   });
 }
 
@@ -375,35 +430,30 @@ function drawMoney(scene: Phaser.Scene) {
   }
 }
 
-/** Skin and sleeve colours taken from each character on the sheet. */
-const HANDS: { skin: string; shade: string; sleeve: string; cuff: string }[] = [
-  { skin: '#f0c896', shade: '#c9915f', sleeve: '#efdcc6', cuff: '#c9b49c' },
-  { skin: '#e3b184', shade: '#a9744c', sleeve: '#e9daa8', cuff: '#a9b4c0' },
-  { skin: '#f4cfa6', shade: '#cf9a6c', sleeve: '#54728f', cuff: '#37506a' },
-  { skin: '#f0c896', shade: '#c9915f', sleeve: '#8a7250', cuff: '#6d5a3f' },
-  { skin: '#f0c49a', shade: '#c9915f', sleeve: '#cbbd9f', cuff: '#a3967b' },
-  { skin: '#dcae85', shade: '#a3724f', sleeve: '#b9c490', cuff: '#8f9a6a' },
-];
-
-function drawHands(scene: Phaser.Scene) {
-  HANDS.forEach((h, i) => {
-    canvasTexture(scene, `hand_${i}`, 20, 26, (c) => {
-      // Forearm coming over the counter from the customer
-      rect(c, h.sleeve, 3, 0, 11, 13);
-      rect(c, h.cuff, 3, 11, 11, 3);
-      rect(c, h.cuff, 11, 0, 3, 11);
-      // Back of the hand
-      rect(c, h.skin, 4, 14, 10, 6);
-      rect(c, h.shade, 11, 14, 3, 6);
-      // Thumb and fingers wrapped around what they're holding
-      rect(c, h.skin, 13, 16, 5, 3);
-      rect(c, h.shade, 13, 18, 5, 1);
-      for (let f = 0; f < 4; f++) {
-        rect(c, h.skin, 4 + f * 3, 20, 2, 4);
-        rect(c, h.shade, 5 + f * 3, 21, 1, 3);
-      }
-      outline(c, 20, 26, '#2c2a33');
-    });
+function drawCard(scene: Phaser.Scene) {
+  // A small stack of bills, so it reads as cash at a glance
+  canvasTexture(scene, 'held_cash', 34, 24, (c) => {
+    const bill = (x: number, y: number, base: string, dark: string, light: string) => {
+      rect(c, '#2c2a33', x, y, 30, 18);
+      rect(c, dark, x + 1, y + 1, 28, 16);
+      rect(c, base, x + 2, y + 2, 26, 14);
+      rect(c, light, x + 3, y + 3, 24, 1);
+      rect(c, light, x + 3, y + 14, 24, 1);
+    };
+    bill(4, 0, '#8f9c62', '#5c6a35', '#cdd6a3');
+    bill(2, 3, '#5d7fb3', '#35507e', '#b0c6e4');
+    bill(0, 6, '#5f9a63', '#2f6b3f', '#a9d39f');
+    disc(c, '#efe8cf', 15, 15, 6);
+    disc(c, '#2f6b3f', 15, 15, 5);
+    disc(c, '#efe8cf', 15, 15, 4);
+    // Dollar sign
+    const ink = '#2f6b3f';
+    rect(c, ink, 15, 11, 1, 9);
+    rect(c, ink, 13, 12, 5, 1);
+    rect(c, ink, 13, 13, 1, 2);
+    rect(c, ink, 13, 15, 5, 1);
+    rect(c, ink, 17, 16, 1, 2);
+    rect(c, ink, 13, 18, 5, 1);
   });
   canvasTexture(scene, 'held_card', 26, 17, (c) => {
     rect(c, '#2c2a33', 0, 0, 26, 17);
@@ -475,6 +525,6 @@ export function createTextures(scene: Phaser.Scene): void {
   drawShop(scene);
   drawMoney(scene);
   drawProps(scene);
-  drawHands(scene);
+  drawCard(scene);
   drawProducts(scene);
 }

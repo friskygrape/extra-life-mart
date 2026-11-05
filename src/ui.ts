@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { FONT_KEY } from './art/font';
 import { sfx } from './audio';
+import { L } from './layout';
 
 export const WIDTH = 216;
 export const HEIGHT = 384;
@@ -93,7 +94,13 @@ export function button(
   };
 }
 
-/** Full-screen backing that also stops taps reaching the shop underneath. */
-export function backdrop(scene: Phaser.Scene, top = 0): Phaser.GameObjects.Rectangle {
-  return scene.add.rectangle(0, top, WIDTH, HEIGHT - top, COLOURS.bg).setOrigin(0).setInteractive();
+/**
+ * For screens laid out at the minimum size: centres that content on larger
+ * screens, and fills the whole screen behind it, which also stops taps reaching the shop.
+ */
+export function backdrop(scene: Phaser.Scene): Phaser.GameObjects.Rectangle {
+  const offsetX = Math.floor((L.W - WIDTH) / 2);
+  const offsetY = Math.floor((L.H - HEIGHT) / 2);
+  scene.cameras.main.setScroll(-offsetX, -offsetY);
+  return scene.add.rectangle(-offsetX, -offsetY, L.W, L.H, COLOURS.bg).setOrigin(0).setInteractive();
 }

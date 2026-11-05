@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { getProduct, PRODUCTS, SHELF_CAPACITY } from '../src/data/products';
 import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
+import { computeLayout, MIN_H, MIN_W } from '../src/layout';
+import { clockLabel, lightingAt } from '../src/logic/clock';
 import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
-import { buildRequest } from '../src/logic/customers';
+import { buildRequest, IDLE_MAX_SECONDS, shortenWhenIdle } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
@@ -375,5 +377,105 @@ describe('shelf rows', () => {
     expect(s.shelves).toHaveLength(12);
     expect(nextRowPrice(s)).toBeNull();
     expect(buyShelfRow(s)).toBe(false);
+  });
+});
+
+describe('clock', () => {
+  it('runs from 9 AM to 9 PM in 12-hour time', () => {
+    expect(clockLabel(0)).toBe('9:00 AM');
+    expect(clockLabel(0.25)).toBe('12:00 PM');
+    expect(clockLabel(1 / 3 + 0.001)).toBe('1:00 PM');
+    expect(clockLabel(1)).toBe('9:00 PM');
+  });
+  it('never shows 24-hour numbers', () => {
+    for (let f = 0; f <= 1; f += 0.01) expect(clockLabel(f)).toMatch(/^([1-9]|1[0-2]):[0-5]0 (AM|PM)$/);
+  });
+});
+
+describe('lighting', () => {
+  it('stays bright until 6 PM', () => {
+    expect(lightingAt(0)).toEqual({ dusk: 0, night: 0 });
+    expect(lightingAt(0.75)).toEqual({ dusk: 0, night: 0 });
+  });
+  it('reaches dusk at 7:30 PM and full night by 9 PM', () => {
+    expect(lightingAt(0.875)).toEqual({ dusk: 1, night: 0 });
+    expect(lightingAt(1)).toEqual({ dusk: 1, night: 1 });
+  });
+  it('only ever gets darker through the evening', () => {
+    let last = 0;
+    for (let f = 0.75; f <= 1; f += 0.01) {
+      const { dusk, night } = lightingAt(f);
+      expect(dusk + night).toBeGreaterThanOrEqual(last);
+      last = dusk + night;
+    }
+  });
+});
+
+describe('customer gaps', () => {
+  it('brings the next customer soon when nobody is around', () => {
+    expect(shortenWhenIdle(20, true)).toBe(IDLE_MAX_SECONDS);
+    expect(shortenWhenIdle(1, true)).toBe(1);
+  });
+  it('leaves the timing alone when someone is being served', () => {
+    expect(shortenWhenIdle(20, false)).toBe(20);
+  });
+});
+
+describe('layout', () => {
+  const devices = [
+    ['S25 Ultra, full screen', 412, 915, 3.5],
+    ['S25 Ultra, with browser bars', 412, 785, 3.5],
+    ['small iPhone', 375, 667, 2],
+    ['iPhone 13', 390, 844, 3],
+    ['Pixel', 412, 915, 2.625],
+    ['foldable', 673, 841, 2.625],
+    ['iPad', 768, 1024, 2],
+  ] as const;
+
+  it.each(devices)('%s fills the screen in whole pixels', (_name, width, height, dpr) => {
+    const l = computeLayout({ width, height, dpr });
+    const scale = l.zoom * dpr;
+    expect(scale).toBe(Math.round(scale));
+    expect(l.W).toBeGreaterThanOrEqual(MIN_W);
+    expect(l.H).toBeGreaterThanOrEqual(MIN_H);
+    expect(l.H * l.zoom).toBeGreaterThanOrEqual(Math.min(height, 640 * l.zoom) - l.zoom);
+  });
+  it('fits a tall phone edge to edge', () => {
+    const l = computeLayout({ width: 412, height: 785, dpr: 3.5 });
+    expect(l.W * l.zoom).toBeGreaterThanOrEqual(412);
+    expect(l.H * l.zoom).toBeGreaterThanOrEqual(785);
+  });
+  it('stacks everything down the screen with nothing left over', () => {
+    for (const [, width, height, dpr] of devices) {
+      const l = computeLayout({ width, height, dpr, safeBottom: 20 });
+      expect(l.counterTop).toBe(l.windowY + l.windowH);
+      expect(l.shelfTop).toBe(l.counterBottom + 1);
+      expect(l.stripTop).toBe(l.shelfTop + l.rowH * 3);
+      expect(l.stripTop + l.stripH).toBe(l.H);
+    }
+  });
+  it('never makes the window smaller than a customer', () => {
+    for (const [, width, height, dpr] of devices) {
+      const l = computeLayout({ width, height, dpr });
+      expect(l.windowH).toBeGreaterThanOrEqual(113);
+      expect(l.windowW).toBeGreaterThanOrEqual(141);
+    }
+  });
+  it('keeps a portrait shop on wide screens', () => {
+    const l = computeLayout({ width: 1280, height: 800, dpr: 1 });
+    expect(l.W).toBeLessThanOrEqual(300);
+    expect(l.W).toBeLessThan(l.H);
+  });
+  it('scales the minimum layout down on tiny screens', () => {
+    const l = computeLayout({ width: 200, height: 300, dpr: 1 });
+    expect(l.W).toBe(MIN_W);
+    expect(l.H).toBe(MIN_H);
+    expect(l.zoom).toBeLessThan(1);
+  });
+  it('keeps controls clear of a notch and gesture bar', () => {
+    const plain = computeLayout({ width: 390, height: 844, dpr: 3 });
+    const safe = computeLayout({ width: 390, height: 844, dpr: 3, safeTop: 47, safeBottom: 34 });
+    expect(safe.hudH).toBeGreaterThan(plain.hudH);
+    expect(safe.stripH).toBeGreaterThan(plain.stripH);
   });
 });

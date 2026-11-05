@@ -45,6 +45,13 @@ export function nextSpawnDelay(day: number, rng: () => number = Math.random): nu
   return base * (0.7 + rng() * 0.6);
 }
 
+/** When nobody is at the window or in line, the next customer is never more than this far away. */
+export const IDLE_MAX_SECONDS = 3;
+
+export function shortenWhenIdle(spawnIn: number, idle: boolean): number {
+  return idle ? Math.min(spawnIn, IDLE_MAX_SECONDS) : spawnIn;
+}
+
 export function chooseCash(rng: () => number = Math.random): boolean {
   return rng() < 0.55;
 }

@@ -1,41 +1,53 @@
 import Phaser from 'phaser';
 import { getProduct } from '../data/products';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
-import { CUSTOMER_LOOKS, WINDOW } from '../art/textures';
+import { CUSTOMER_LOOKS, columnX } from '../art/textures';
 import { isMuted, sfx, toggleMuted } from '../audio';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
-import { buildRequest, chooseCash, nextSpawnDelay } from '../logic/customers';
+import { lightingAt } from '../logic/clock';
+import { buildRequest, chooseCash, nextSpawnDelay, shortenWhenIdle } from '../logic/customers';
 import { endDay } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { nextRowPrice } from '../logic/licences';
 import { customerTender, formatCents, roundToNickel } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
+import { L } from '../layout';
 import { session } from '../session';
-import { Button, COLOURS, WIDTH, button, label } from '../ui';
+import { Button, COLOURS, button, label } from '../ui';
 
-const SLOT_W = 54;
-const SLOT_H = 49;
-const SHELF_TOP = 203;
 const TABLE_CAPACITY = 5;
-const BOX_X = 153;
-const BOX_Y = 178;
-const CRATE_X = 14;
-const CRATE_Y = 368;
 const DELIVERY_SECONDS = 3;
 const MAX_FLYING_ITEMS = 14;
 const MAX_WAITING = 4;
 const COMPLAINT = 0xb0352b;
-const PORTRAIT_X = 80;
 const PORTRAIT_OFFSCREEN = 90;
-const HAND_X = 116;
-const HAND_Y = 146;
-const BUBBLE_X = 107;
-const BUBBLE_Y = 50;
-const BUBBLE_W = 106;
 const DONE_GREEN = 0x1f8f55;
+/** Which part of the background sits in the window, in its own pixels. */
+const SCENE_FOCUS_LEFT = 238;
+const SCENE_FOCUS_BOTTOM = 205;
+const SCENE_W = 479;
+const SCENE_H = 267;
 /** A short beat after the last item lands, so you can see the order complete. */
 const PAYMENT_DELAY_MS = 350;
 const EMPTY_HANDED_MS = 1900;
+
+const tableItemX = (i: number) => 52 + i * 21;
+const tableY = () => L.counterTop + 21;
+const propX = () => L.W - 74;
+const portraitX = () => L.windowX + 43;
+const bubbleX = () => portraitX() + 27;
+const bubbleY = () => L.windowY + 8;
+const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
+const slotLeft = (slot: ShelfSlot) => columnX(slot.col);
+const slotWidth = (slot: ShelfSlot) => columnX(slot.col + 1) - columnX(slot.col);
+const slotTop = (slot: ShelfSlot) => L.shelfTop + slot.row * L.rowH;
+const crateX = () => 14;
+const crateY = () => L.stripTop + 16;
+
+function mixColour(a: number, b: number, t: number): number {
+  const mix = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t) << shift;
+  return mix(16) | mix(8) | mix(0);
+}
 
 /** Someone in line. What they want is decided when they reach the window. */
 interface Waiting {
@@ -56,6 +68,9 @@ interface TableItem {
 }
 
 export class ShackScene extends Phaser.Scene {
+  private duskScene!: Phaser.GameObjects.Image;
+  private nightScene!: Phaser.GameObjects.Image;
+  private warmLight!: Phaser.GameObjects.Rectangle;
   private shutter!: Phaser.GameObjects.Image;
   private closedSign!: Phaser.GameObjects.BitmapText;
   private portrait!: Phaser.GameObjects.Image;
@@ -63,7 +78,6 @@ export class ShackScene extends Phaser.Scene {
   private bubbleTail!: Phaser.GameObjects.Triangle;
   private speech!: Phaser.GameObjects.Rectangle;
   private speechTail!: Phaser.GameObjects.Triangle;
-  private hand!: Phaser.GameObjects.Image;
   private heldMoney!: Phaser.GameObjects.Image;
   private heldCard!: Phaser.GameObjects.Image;
   private bubbleLines: { destroy(): void }[] = [];
@@ -95,51 +109,66 @@ export class ShackScene extends Phaser.Scene {
   }
 
   create() {
-    this.add.image(WINDOW.x, WINDOW.y, 'beach').setOrigin(0).setDepth(0);
+    const { W, windowX, windowY, windowW, windowH } = L;
+    const cropLeft = Math.max(0, Math.min(SCENE_W - windowW, SCENE_FOCUS_LEFT - Math.round((windowW - 141) * 0.3)));
+    const cropBottom = Math.min(SCENE_H, SCENE_FOCUS_BOTTOM + Math.round((windowH - 113) * 0.5));
+    const cropTop = Math.max(0, cropBottom - windowH);
+    const sceneX = windowX - cropLeft;
+    const sceneY = windowY - cropTop;
+    this.add.image(sceneX, sceneY, 'beach').setOrigin(0).setDepth(0);
+    this.duskScene = this.add.image(sceneX, sceneY, 'beach_dusk').setOrigin(0).setDepth(0.1).setAlpha(0);
+    this.nightScene = this.add.image(sceneX, sceneY, 'beach_night').setOrigin(0).setDepth(0.2).setAlpha(0);
     this.waitingArt = [0, 1, 2, 3].map((i) =>
-      this.add.image(162 - i * 9, 118 + (i % 2) * 2 + i * 3, 'waiting').setOrigin(0).setDepth(1).setVisible(false),
+      this.add.image(windowX + windowW - 14 - i * 12, windowY + windowH - 30 + (i % 2) * 2, `walker_${i % 2}`).setOrigin(0).setDepth(1).setVisible(false),
     );
-    this.portrait = this.add.image(-PORTRAIT_OFFSCREEN, WINDOW.y + WINDOW.h, 'cust_0').setOrigin(0.5, 1).setDepth(2);
-    this.shutter = this.add.image(WINDOW.x, WINDOW.y, 'shutter').setOrigin(0).setDepth(3);
-    this.closedSign = label(this, WINDOW.x + WINDOW.w / 2, WINDOW.y + 54, 'CLOSED', COLOURS.white, 'center').setDepth(3.5);
+    this.portrait = this.add.image(-PORTRAIT_OFFSCREEN, windowY + windowH, 'cust_0').setOrigin(0.5, 1).setDepth(2);
+    this.shutter = this.add.image(windowX, windowY, 'shutter').setOrigin(0).setDepth(3);
+    this.closedSign = label(this, windowX + Math.floor(windowW / 2), windowY + Math.floor(windowH / 2) - 4, 'CLOSED', COLOURS.white, 'center').setDepth(3.5);
     this.add.image(0, 0, 'shop').setOrigin(0).setDepth(4);
-    this.bubble = this.add.rectangle(BUBBLE_X, BUBBLE_Y, BUBBLE_W, 40, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
-    this.bubbleTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
-    this.speech = this.add.rectangle(BUBBLE_X, BUBBLE_Y, BUBBLE_W, 20, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
-    this.speechTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
-    label(this, WINDOW.x + WINDOW.w / 2, 25, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
-    this.heldMoney = this.add.image(HAND_X + 14, HAND_Y + 21, 'desk_2000').setDepth(5.1).setVisible(false);
-    this.heldCard = this.add.image(HAND_X + 14, HAND_Y + 21, 'held_card').setDepth(5.1).setVisible(false);
-    this.hand = this.add.image(HAND_X, HAND_Y, 'hand_0').setOrigin(0).setDepth(5.2).setVisible(false);
+    this.warmLight = this.add.rectangle(0, 0, W, L.H, 0xffa050, 0).setOrigin(0).setDepth(4.05);
 
-    this.add.rectangle(0, 0, WIDTH, 15, COLOURS.bg).setOrigin(0).setDepth(6);
-    this.dayText = label(this, 4, 4, '').setDepth(7);
-    this.clockText = label(this, WIDTH / 2, 4, '', COLOURS.dim, 'center').setDepth(7);
-    this.moneyText = label(this, WIDTH - 4, 4, '', COLOURS.gold, 'right').setDepth(7);
-
-    label(this, 191, 166, 'ORDER', COLOURS.green, 'center').setDepth(7);
-    label(this, 191, 175, 'STOCKS', COLOURS.green, 'center').setDepth(7);
-    this.add.rectangle(168, 160, 46, 36, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+    const standBottom = L.counterBottom - 6;
+    this.add.image(2, standBottom, 'till').setOrigin(0, 1).setDepth(4.5);
+    const computerX = W - 52;
+    const computerY = standBottom + 2 - 60;
+    this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
+    label(this, computerX + 24, computerY + 8, 'ORDER', COLOURS.green, 'center').setDepth(4.6);
+    label(this, computerX + 24, computerY + 18, 'STOCKS', COLOURS.green, 'center').setDepth(4.6);
+    this.add.rectangle(computerX, computerY, 50, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => this.openModal('Order'));
 
+    this.bubble = this.add.rectangle(0, 0, 10, 10, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
+    this.bubbleTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
+    this.speech = this.add.rectangle(0, 0, 10, 10, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
+    this.speechTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
+    label(this, windowX + Math.floor(windowW / 2), L.signY + 7, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
+    this.heldMoney = this.add.image(propX(), tableY(), 'held_cash').setDepth(5.1).setVisible(false);
+    this.heldCard = this.add.image(propX(), tableY(), 'held_card').setDepth(5.1).setVisible(false);
+
+    this.add.rectangle(0, 0, W, L.hudH, COLOURS.bg).setOrigin(0).setDepth(6);
+    const hudText = L.hudH - 11;
+    this.dayText = label(this, 4, hudText, '').setDepth(7);
+    this.clockText = label(this, Math.floor(W / 2) + 6, hudText, '', COLOURS.dim, 'center').setDepth(7);
+    this.moneyText = label(this, W - 4, hudText, '', COLOURS.gold, 'right').setDepth(7);
+
     SHELF_SLOTS.forEach((slot) => {
-      this.add.rectangle(slot.col * SLOT_W, SHELF_TOP + slot.row * SLOT_H, SLOT_W, SLOT_H, 0xffffff, 0)
+      this.add.rectangle(slotLeft(slot), slotTop(slot), slotWidth(slot), L.rowH, 0xffffff, 0)
         .setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
         .on('pointerup', () => this.tapSlot(slot));
     });
 
-    this.crate = this.add.image(CRATE_X, CRATE_Y, 'crate').setDepth(7).setInteractive({ useHandCursor: true })
+    this.crate = this.add.image(crateX(), crateY(), 'crate').setDepth(7).setInteractive({ useHandCursor: true })
       .on('pointerup', () => session.toast(`${this.stockTotal()} ITEMS IN YOUR STOCK`));
-    this.stockCount = label(this, CRATE_X, CRATE_Y - 3, '', COLOURS.white, 'center').setDepth(8);
-    this.hint = label(this, 28, 354, '').setDepth(7);
-    this.hint.setMaxWidth(102);
-    this.soundIcon = this.add.image(62, 7, isMuted() ? 'sound_off' : 'sound_on').setDepth(7);
-    this.add.rectangle(50, 0, 24, 16, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+    this.stockCount = label(this, crateX(), crateY() - 3, '', COLOURS.white, 'center').setDepth(8);
+    this.hint = label(this, 28, L.stripTop + 2, '').setDepth(7);
+    this.hint.setMaxWidth(W - 116);
+    this.soundIcon = this.add.image(46, L.hudH - 8, isMuted() ? 'sound_off' : 'sound_on').setDepth(7);
+    this.add.rectangle(35, 0, 22, L.hudH, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         this.soundIcon.setTexture(toggleMuted() ? 'sound_off' : 'sound_on');
         sfx.click();
       });
-    this.action = button(this, 134, 356, 78, 25, 'OPEN', () => this.pressAction(), COLOURS.accent, null);
+    this.action = button(this, W - 82, L.stripTop + 4, 78, 25, 'OPEN', () => this.pressAction(), COLOURS.accent, null);
     this.action.rect.setDepth(7);
     this.action.text.setDepth(8);
 
@@ -164,7 +193,7 @@ export class ShackScene extends Phaser.Scene {
     this.hidePayment();
     this.clearTable();
     this.portrait.setX(-PORTRAIT_OFFSCREEN);
-    this.shutter.setY(WINDOW.y);
+    this.shutter.setY(L.windowY);
     this.closedSign.setVisible(true);
     this.refreshShelves();
   }
@@ -172,26 +201,30 @@ export class ShackScene extends Phaser.Scene {
   // ---- Shelves and table --------------------------------------------------
 
   private refreshShelves() {
+    const iconRows = Math.max(2, Math.floor((L.rowH - 14) / 16));
     for (const slot of SHELF_SLOTS) {
       this.slotArt.get(slot.id)?.forEach((o) => o.destroy());
       this.slotArt.delete(slot.id);
       const shelf = session.state.shelves.find((s) => s.id === slot.id);
       if (!shelf) continue;
       const art: Phaser.GameObjects.GameObject[] = [];
-      const x = slot.col * SLOT_W;
-      const y = SHELF_TOP + slot.row * SLOT_H;
+      const x = slotLeft(slot);
+      const y = slotTop(slot);
+      const w = slotWidth(slot);
+      const labelY = y + L.rowH - 9;
       if (shelf.productId && shelf.qty > 0) {
-        const shown = Math.min(shelf.qty, 6);
+        const shown = Math.min(shelf.qty, 3 * iconRows);
+        const left = x + Math.floor((w - 48) / 2);
         for (let i = 0; i < shown; i++) {
-          const ix = x + 3 + (i % 3) * 16;
-          const iy = y + 21 - Math.floor(i / 3) * 16;
-          art.push(this.add.image(ix, iy, `item_${shelf.productId}`).setOrigin(0).setDepth(5 + (i < 3 ? 0.2 : 0.1)));
+          const ix = left + (i % 3) * 16;
+          const iy = labelY - 19 - Math.floor(i / 3) * 16;
+          art.push(this.add.image(ix, iy, `item_${shelf.productId}`).setOrigin(0).setDepth(5 + 0.2 - i * 0.001));
         }
-        art.push(label(this, x + 3, y + 40, getProduct(shelf.productId).short, COLOURS.ink).setDepth(6));
-        art.push(label(this, x + SLOT_W - 3, y + 40, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
+        art.push(label(this, x + 3, labelY, getProduct(shelf.productId).short, COLOURS.ink).setDepth(6));
+        art.push(label(this, x + w - 3, labelY, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
       } else {
-        art.push(label(this, x + SLOT_W / 2, y + 40, 'EMPTY', 0x8a7f6a, 'center').setDepth(6));
-        art.push(label(this, x + SLOT_W / 2, y + 16, '+', COLOURS.white, 'center').setDepth(6).setAlpha(0.7));
+        art.push(label(this, x + Math.floor(w / 2), labelY, 'EMPTY', 0x8a7f6a, 'center').setDepth(6));
+        art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - 19) / 2), '+', COLOURS.white, 'center').setDepth(6).setAlpha(0.7));
       }
       this.slotArt.set(slot.id, art);
     }
@@ -204,11 +237,11 @@ export class ShackScene extends Phaser.Scene {
     this.rowArt = [];
     const { rowsOwned } = session.state;
     for (let row = rowsOwned; row < SHELF_ROWS; row++) {
-      const y = SHELF_TOP + row * SLOT_H;
+      const y = L.shelfTop + row * L.rowH;
       this.rowArt.push(this.add.image(0, y, 'boards').setOrigin(0).setDepth(5));
       const price = row === rowsOwned ? nextRowPrice(session.state) : null;
       const text = price ? `MORE SHELVES ${formatCents(price)}` : 'LOCKED';
-      this.rowArt.push(label(this, WIDTH / 2, y + 20, text, COLOURS.white, 'center').setDepth(6));
+      this.rowArt.push(label(this, Math.floor(L.W / 2), y + Math.floor(L.rowH / 2) - 4, text, COLOURS.white, 'center').setDepth(6));
     }
   }
 
@@ -236,7 +269,7 @@ export class ShackScene extends Phaser.Scene {
     if (!takeFromShelf(session.state, slot.id, productId)) return;
     sfx.pickUp();
     this.spoken = '';
-    const image = this.add.image(slot.col * SLOT_W + SLOT_W / 2, SHELF_TOP + slot.row * SLOT_H + 20, `item_${productId}`).setDepth(9);
+    const image = this.add.image(slotLeft(slot) + slotWidth(slot) / 2, slotTop(slot) + 20, `item_${productId}`).setDepth(9);
     const item: TableItem = { productId, image };
     this.table.push(item);
     image.setInteractive({ useHandCursor: true }).on('pointerup', () => this.takeBack(item));
@@ -266,7 +299,7 @@ export class ShackScene extends Phaser.Scene {
   private layoutTable() {
     this.table.forEach((item, i) => {
       this.tweens.killTweensOf(item.image);
-      this.tweens.add({ targets: item.image, x: 44 + i * 21, y: 180, duration: 140, ease: 'Quad.easeOut' });
+      this.tweens.add({ targets: item.image, x: tableItemX(i), y: tableY(), duration: 140, ease: 'Quad.easeOut' });
     });
     session.table = this.table.map((t) => t.productId);
   }
@@ -295,12 +328,12 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private dropBox() {
-    const box = this.add.image(BOX_X, BOX_Y - 44, 'box_closed').setDepth(9);
+    const box = this.add.image(propX(), tableY() - 44, 'box_closed').setDepth(4.8);
     this.box = box;
     box.setInteractive({ useHandCursor: true }).on('pointerup', () => this.openBox());
     this.tweens.add({
       targets: box,
-      y: BOX_Y,
+      y: tableY(),
       duration: 480,
       ease: 'Bounce.easeOut',
       onUpdate: (tween) => {
@@ -318,7 +351,7 @@ export class ShackScene extends Phaser.Scene {
     if (!box || session.modal || this.boxOpening) return;
     this.boxOpening = true;
     this.tweens.killTweensOf(box);
-    box.setPosition(BOX_X, BOX_Y).setTexture('box_open').disableInteractive();
+    box.setPosition(propX(), tableY()).setTexture('box_open').disableInteractive();
     sfx.rip();
 
     // One icon per box of stock would be too few to see, so show them unit by unit, up to a limit.
@@ -328,19 +361,19 @@ export class ShackScene extends Phaser.Scene {
     shown.forEach((id, i) => {
       this.time.delayedCall(180 + i * 90, () => {
         sfx.pop();
-        const icon = this.add.image(BOX_X, BOX_Y - 4, `item_${id}`).setDepth(10).setScale(0.5);
+        const icon = this.add.image(propX(), tableY() - 4, `item_${id}`).setDepth(10).setScale(0.5);
         this.tweens.add({
           targets: icon,
-          y: BOX_Y - 30,
-          x: BOX_X - 6 + (i % 3) * 6,
+          y: tableY() - 30,
+          x: propX() - 6 + (i % 3) * 6,
           scale: 1,
           duration: 180,
           ease: 'Quad.easeOut',
           onComplete: () => {
             this.tweens.add({
               targets: icon,
-              x: CRATE_X,
-              y: CRATE_Y,
+              x: crateX(),
+              y: crateY(),
               scale: 0.5,
               duration: 360,
               ease: 'Quad.easeIn',
@@ -383,7 +416,7 @@ export class ShackScene extends Phaser.Scene {
     this.portrait.setTexture(`cust_${next.look}`).setX(-PORTRAIT_OFFSCREEN);
     this.tweens.add({
       targets: this.portrait,
-      x: PORTRAIT_X,
+      x: portraitX(),
       duration: 450,
       ease: 'Quad.easeOut',
       onComplete: () => {
@@ -400,18 +433,22 @@ export class ShackScene extends Phaser.Scene {
     });
   }
 
-  /** They hold out cash or a card over the counter, so you can see how they'll pay. */
+  /** Once they've arrived, their cash or card comes down onto the counter. */
   private showPayment(customer: Customer) {
     if (customer.wants.length === 0) return;
     const held = customer.paidByCash ? this.heldMoney : this.heldCard;
-    this.hand.setTexture(`hand_${customer.look}`).setVisible(true).setAlpha(0);
-    held.setVisible(true).setAlpha(0);
-    this.tweens.add({ targets: [this.hand, held], alpha: 1, duration: 160 });
+    this.tweens.killTweensOf(held);
+    held.setPosition(propX(), tableY() - 22).setVisible(true).setAlpha(0);
+    (customer.paidByCash ? sfx.bill : sfx.keypad)();
+    this.tweens.add({ targets: held, y: tableY(), alpha: 1, duration: 260, ease: 'Quad.easeOut' });
   }
 
   private hidePayment() {
-    this.tweens.killTweensOf([this.hand, this.heldMoney, this.heldCard]);
-    [this.hand, this.heldMoney, this.heldCard].forEach((o) => o.setVisible(false));
+    [this.heldMoney, this.heldCard].forEach((held) => {
+      this.tweens.killTweensOf(held);
+      if (!held.visible) return;
+      this.tweens.add({ targets: held, y: held.y - 22, alpha: 0, duration: 200, onComplete: () => held.setVisible(false) });
+    });
   }
 
   private dismiss() {
@@ -424,7 +461,7 @@ export class ShackScene extends Phaser.Scene {
     this.renderBubble();
     this.tweens.add({
       targets: this.portrait,
-      x: WIDTH + PORTRAIT_OFFSCREEN,
+      x: L.W + PORTRAIT_OFFSCREEN,
       duration: 400,
       ease: 'Quad.easeIn',
       onComplete: () => {
@@ -452,23 +489,23 @@ export class ShackScene extends Phaser.Scene {
     if (!visible) return;
 
     const put = (y: number, text: string, colour: number) => {
-      const t = label(this, BUBBLE_X + 3, y, text, colour).setDepth(6);
-      t.setMaxWidth(BUBBLE_W - 6);
+      const t = label(this, bubbleX() + 3, y, text, colour).setDepth(6);
+      t.setMaxWidth(bubbleW() - 6);
       this.bubbleLines.push(t);
       return t;
     };
     const place = (box: Phaser.GameObjects.Rectangle, tail: Phaser.GameObjects.Triangle, top: number, bottom: number) => {
-      box.setPosition(BUBBLE_X, top).setSize(BUBBLE_W, bottom - top).setVisible(true);
-      tail.setPosition(BUBBLE_X + 1, bottom - 8).setVisible(true);
+      box.setPosition(bubbleX(), top).setSize(bubbleW(), bottom - top).setVisible(true);
+      tail.setPosition(bubbleX() + 1, bottom - 8).setVisible(true);
     };
 
     // The list: finished lines become a solid green row with a check mark
-    let y = BUBBLE_Y + 3;
+    let y = bubbleY() + 3;
     if (hasList) {
       requestLines(customer.wants, session.table).forEach((line) => {
         const name = getProduct(line.productId).name;
         if (line.done) {
-          const row = this.add.rectangle(BUBBLE_X + 1, y - 1, BUBBLE_W - 2, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
+          const row = this.add.rectangle(bubbleX() + 1, y - 1, bubbleW() - 2, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
           this.bubbleLines.push(row);
           put(y, `\u2713 ${name}`, COLOURS.white);
         } else {
@@ -476,7 +513,7 @@ export class ShackScene extends Phaser.Scene {
         }
         y += 11;
       });
-      place(this.bubble, this.bubbleTail, BUBBLE_Y, y + 1);
+      place(this.bubble, this.bubbleTail, bubbleY(), y + 1);
       y += 7;
     }
 
@@ -528,8 +565,8 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private floatMoney(total: number) {
-    const t = label(this, 84, 180, `+${formatCents(total)}`, 0x1f7a5a, 'center').setDepth(9);
-    this.tweens.add({ targets: t, y: 165, alpha: 0, duration: 1100, delay: 300, onComplete: () => t.destroy() });
+    const t = label(this, 84, tableY(), `+${formatCents(total)}`, 0x1f7a5a, 'center').setDepth(9);
+    this.tweens.add({ targets: t, y: tableY() - 15, alpha: 0, duration: 1100, delay: 300, onComplete: () => t.destroy() });
   }
 
   private openShop() {
@@ -545,7 +582,7 @@ export class ShackScene extends Phaser.Scene {
     session.toast("WE'RE OPEN!");
     sfx.shutter();
     this.closedSign.setVisible(false);
-    this.tweens.add({ targets: this.shutter, y: WINDOW.y - WINDOW.h, duration: 600, ease: 'Quad.easeIn' });
+    this.tweens.add({ targets: this.shutter, y: L.windowY - L.windowH, duration: 600, ease: 'Quad.easeIn' });
   }
 
   private openModal(scene: string, data?: object) {
@@ -561,7 +598,8 @@ export class ShackScene extends Phaser.Scene {
 
     if (session.phase === 'open') {
       session.clock += dt;
-      this.spawnIn -= dt;
+      const idle = !this.current && !this.busy && this.queue.length === 0;
+      this.spawnIn = shortenWhenIdle(this.spawnIn, idle) - dt;
       if (this.spawnIn <= 0) {
         if (this.queue.length < MAX_WAITING) {
           this.queue.push({ look: Math.floor(Math.random() * CUSTOMER_LOOKS), paidByCash: chooseCash() });
@@ -580,9 +618,22 @@ export class ShackScene extends Phaser.Scene {
       }
     }
     this.tickDelivery(dt);
+    this.applyLighting();
     session.waiting = this.queue.length;
     this.waitingArt.forEach((img, i) => img.setVisible(i < this.queue.length));
     this.updateHud();
+  }
+
+  /** Daylight until 6 PM, then the scene fades through dusk to night by closing. */
+  private applyLighting() {
+    const { dusk, night } = lightingAt(session.dayFraction());
+    this.duskScene.setAlpha(dusk);
+    this.nightScene.setAlpha(night);
+    // Customers are outside but lit by the shop, so they shift gently and stay readable.
+    const tint = mixColour(mixColour(0xffffff, 0xffe2cc, dusk), 0xbcc4e2, night);
+    this.portrait.setTint(tint);
+    this.waitingArt.forEach((img) => img.setTint(mixColour(0xffffff, 0x7a84b0, Math.max(dusk * 0.4, night))));
+    this.warmLight.setFillStyle(0xffa050, 0.1 * Math.max(dusk * 0.5, night));
   }
 
   private updateHud() {

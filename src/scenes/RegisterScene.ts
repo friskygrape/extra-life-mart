@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
+import { L } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, button, label } from '../ui';
+import { COLOURS, button, label } from '../ui';
 
 interface RegisterData {
   items: string[];
@@ -15,22 +16,13 @@ interface RegisterData {
   onBack: () => void;
 }
 
-/** The panel starts below the counter, so the desk and customer stay in view. */
-const TOP = 198;
-const CELL_W = 52;
-const CELL_H = 32;
-const MONEY_Y = 264;
-const ACTIONS_Y = 334;
-/** Where change is laid out on the desk: two rows in front of the customer. */
-const DESK_LEFT = 44;
-const DESK_ROW_1 = { y: 170, right: 114 };
-const DESK_ROW_2 = { y: 187, right: 164 };
+const RECEIPT_H = 55;
 const denominationLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}C`);
 const deskLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}`);
 
 interface DeskPiece {
   cents: number;
-  parts: { destroy(): void; setPosition(x: number, y: number): unknown; setDepth(d: number): unknown }[];
+  parts: { destroy(): void }[];
   sprite: Phaser.GameObjects.Image;
   text: Phaser.GameObjects.BitmapText;
   hit: Phaser.GameObjects.Rectangle;
@@ -46,9 +38,19 @@ export class RegisterScene extends Phaser.Scene {
   private givenText!: Phaser.GameObjects.BitmapText;
   private messageText!: Phaser.GameObjects.BitmapText;
   private displayText!: Phaser.GameObjects.BitmapText;
+  private terminal: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super('Register');
+  }
+
+  private get top() {
+    return L.counterBottom;
+  }
+
+  /** Bottom of the area controls can use, clear of rounded corners and gesture bars. */
+  private get floor() {
+    return L.H - L.safeBottom - 3;
   }
 
   create(data: RegisterData) {
@@ -58,10 +60,11 @@ export class RegisterScene extends Phaser.Scene {
     this.desk = [];
     this.entered = 0;
     this.finished = false;
+    this.terminal = null;
     session.sale = { items: data.items, total: data.total, paidByCash: data.paidByCash, tendered: data.tendered };
     session.events.emit('say', data.paidByCash ? `HERE'S ${formatCents(data.tendered)}` : 'CARD, PLEASE');
 
-    backdrop(this, TOP);
+    this.add.rectangle(0, this.top, L.W, L.H - this.top, COLOURS.bg).setOrigin(0).setInteractive();
     this.drawReceipt(data.items, data.paidByCash);
     if (data.paidByCash) this.buildCash();
     else this.buildCard();
@@ -69,49 +72,62 @@ export class RegisterScene extends Phaser.Scene {
   }
 
   private drawReceipt(items: string[], cash: boolean) {
-    this.add.rectangle(4, TOP + 3, 120, 52, COLOURS.paper).setOrigin(0);
+    const top = this.top;
+    this.add.rectangle(4, top + 3, 120, 52, COLOURS.paper).setOrigin(0);
     items.slice(0, 4).forEach((id, i) => {
       const p = getProduct(id);
-      label(this, 6, TOP + 4 + i * 9, p.short, COLOURS.ink);
-      label(this, 122, TOP + 4 + i * 9, formatCents(p.retail), COLOURS.ink, 'right');
+      label(this, 6, top + 4 + i * 9, p.short, COLOURS.ink);
+      label(this, 122, top + 4 + i * 9, formatCents(p.retail), COLOURS.ink, 'right');
     });
-    this.add.rectangle(6, TOP + 41, 116, 1, COLOURS.ink).setOrigin(0);
-    label(this, 6, TOP + 44, cash ? 'CASH TOTAL' : 'TOTAL', COLOURS.ink);
-    label(this, 122, TOP + 44, formatCents(this.total), COLOURS.ink, 'right');
+    this.add.rectangle(6, top + 41, 116, 1, COLOURS.ink).setOrigin(0);
+    label(this, 6, top + 44, cash ? 'CASH TOTAL' : 'TOTAL', COLOURS.ink);
+    label(this, 122, top + 44, formatCents(this.total), COLOURS.ink, 'right');
   }
 
   // ---- Cash ---------------------------------------------------------------
 
   private buildCash() {
+    const top = this.top;
+    const right = L.W - 4;
     const row = (y: number, name: string, value: string, colour: number) => {
       label(this, 128, y, name, COLOURS.dim);
-      return label(this, 212, y, value, colour, 'right');
+      return label(this, right, y, value, colour, 'right');
     };
-    row(TOP + 5, 'PAID', formatCents(this.tendered), COLOURS.white);
-    this.add.rectangle(127, TOP + 16, 87, 13, COLOURS.panelLight).setOrigin(0);
-    label(this, 129, TOP + 19, 'CHANGE', COLOURS.gold);
-    label(this, 212, TOP + 19, formatCents(this.tendered - this.total), COLOURS.gold, 'right');
-    this.givenText = row(TOP + 35, 'GIVEN', '$0.00', COLOURS.white);
-    this.messageText = label(this, WIDTH / 2, TOP + 57, 'TAP MONEY TO GIVE IT', COLOURS.dim, 'center');
+    row(top + 5, 'PAID', formatCents(this.tendered), COLOURS.white);
+    this.add.rectangle(127, top + 16, right - 125, 13, COLOURS.panelLight).setOrigin(0);
+    label(this, 129, top + 19, 'CHANGE', COLOURS.gold);
+    label(this, right, top + 19, formatCents(this.tendered - this.total), COLOURS.gold, 'right');
+    this.givenText = row(top + 35, 'GIVEN', '$0.00', COLOURS.white);
+    this.messageText = label(this, Math.floor(L.W / 2), top + 57, 'TAP MONEY TO GIVE IT', COLOURS.dim, 'center');
 
-    DENOMINATIONS.forEach((cents, i) => this.moneyPiece(cents, i));
-    button(this, 4, ACTIONS_Y, 42, 44, 'BACK', () => this.back());
-    button(this, 48, ACTIONS_Y, 40, 44, 'UNDO', () => this.undo());
-    button(this, 90, ACTIONS_Y, 40, 44, 'CLEAR', () => this.clearDesk());
-    button(this, 132, ACTIONS_Y, 80, 44, 'GIVE', () => this.giveChange(), COLOURS.accent, null);
+    const moneyY = top + 66;
+    const actionsH = 44;
+    const cellH = Math.min(46, Math.floor((this.floor - moneyY - actionsH - 2) / 2) - 2);
+    const cellW = Math.floor((L.W - 8) / 4);
+    DENOMINATIONS.forEach((cents, i) => {
+      const cx = 4 + (i % 4) * cellW + Math.floor(cellW / 2);
+      const cy = moneyY + Math.floor(i / 4) * (cellH + 2) + Math.floor(cellH / 2);
+      this.moneyPiece(cents, cx, cy, cellW, cellH);
+    });
+
+    const actionsY = this.floor - actionsH;
+    const small = Math.floor((L.W - 8) * 0.19);
+    button(this, 4, actionsY, small + 2, actionsH, 'BACK', () => this.back());
+    button(this, 8 + small, actionsY, small, actionsH, 'UNDO', () => this.undo());
+    button(this, 10 + small * 2, actionsY, small, actionsH, 'CLEAR', () => this.clearDesk());
+    const giveX = 12 + small * 3;
+    button(this, giveX, actionsY, L.W - giveX - 4, actionsH, 'GIVE', () => this.giveChange(), COLOURS.accent, null);
   }
 
   /** A bill or coin you can tap, with its value printed on it. */
-  private moneyPiece(cents: number, index: number) {
-    const cx = 4 + (index % 4) * CELL_W + CELL_W / 2;
-    const cy = MONEY_Y + Math.floor(index / 4) * (CELL_H + 2) + CELL_H / 2;
+  private moneyPiece(cents: number, cx: number, cy: number, cellW: number, cellH: number) {
     const sprite = this.add.image(cx, cy, `money_${cents}`);
     const amount = label(this, cx, cy - 3, denominationLabel(cents), COLOURS.ink, 'center');
     const press = (down: boolean) => {
       sprite.setY(down ? cy + 1 : cy);
       amount.setY((down ? cy + 1 : cy) - 3);
     };
-    this.add.rectangle(cx - CELL_W / 2, cy - CELL_H / 2, CELL_W, CELL_H, 0xffffff, 0).setOrigin(0)
+    this.add.rectangle(cx - cellW / 2, cy - cellH / 2, cellW, cellH, 0xffffff, 0).setOrigin(0)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => press(true))
       .on('pointerout', () => press(false))
@@ -131,7 +147,6 @@ export class RegisterScene extends Phaser.Scene {
     hit.on('pointerup', () => this.removePiece(piece));
     this.desk.push(piece);
     this.refreshDesk();
-    // Drop it onto the desk
     sprite.setScale(1.3);
     this.tweens.add({ targets: sprite, scale: 1, duration: 110, ease: 'Quad.easeOut' });
   }
@@ -160,7 +175,7 @@ export class RegisterScene extends Phaser.Scene {
     return this.desk.reduce((sum, piece) => sum + piece.cents, 0);
   }
 
-  /** Lays pieces out in two rows, fanning them closer together when there are many. */
+  /** Lays pieces out in two rows on the counter, fanning them closer together when there are many. */
   private refreshDesk() {
     this.messageText.setText('');
     const due = this.tendered - this.total;
@@ -168,13 +183,16 @@ export class RegisterScene extends Phaser.Scene {
     this.givenText.setText(formatCents(given));
     this.givenText.setTint(given === due ? COLOURS.green : given > due ? COLOURS.red : COLOURS.white);
 
+    const deskLeft = 46;
+    const rowOne = { y: L.counterTop + 12, right: L.W - 94 };
+    const rowTwo = { y: L.counterTop + 29, right: L.W - 56 };
     const width = (piece: DeskPiece) => piece.sprite.width;
     const fitRow = (pieces: DeskPiece[], row: { y: number; right: number }, baseDepth: number) => {
       if (pieces.length === 0) return;
-      const room = row.right - DESK_LEFT;
+      const room = row.right - deskLeft;
       const natural = pieces.reduce((sum, p) => sum + width(p) + 1, -1);
       const squeeze = natural > room ? (natural - room) / Math.max(pieces.length - 1, 1) : 0;
-      let x = DESK_LEFT;
+      let x = deskLeft;
       pieces.forEach((piece, i) => {
         const cx = Math.round(x + width(piece) / 2);
         piece.sprite.setPosition(cx, row.y).setDepth(baseDepth + i * 3);
@@ -183,11 +201,10 @@ export class RegisterScene extends Phaser.Scene {
         x += width(piece) + 1 - squeeze;
       });
     };
-    // Fill the shorter front row first, then the longer row below it
     const firstRow: DeskPiece[] = [];
     const secondRow: DeskPiece[] = [];
     let used = 0;
-    const room = DESK_ROW_1.right - DESK_LEFT;
+    const room = rowOne.right - deskLeft;
     this.desk.forEach((piece) => {
       if (secondRow.length === 0 && used + width(piece) <= room) {
         firstRow.push(piece);
@@ -196,8 +213,8 @@ export class RegisterScene extends Phaser.Scene {
         secondRow.push(piece);
       }
     });
-    fitRow(firstRow, DESK_ROW_1, 10);
-    fitRow(secondRow, DESK_ROW_2, 100);
+    fitRow(firstRow, rowOne, 10);
+    fitRow(secondRow, rowTwo, 100);
   }
 
   private giveChange() {
@@ -214,22 +231,30 @@ export class RegisterScene extends Phaser.Scene {
   // ---- Card ---------------------------------------------------------------
 
   private buildCard() {
-    this.add.rectangle(128, TOP + 3, 84, 52, 0x101a17).setOrigin(0).setStrokeStyle(1, COLOURS.border);
-    label(this, 132, TOP + 7, 'AMOUNT', 0x5fa877);
-    this.displayText = label(this, 208, TOP + 21, '$0.00', COLOURS.green, 'right');
-    this.messageText = label(this, 170, TOP + 41, '', COLOURS.red, 'center');
+    const top = this.top;
+    this.buildTerminal();
 
-    const w = 50;
-    const h = 28;
-    const x = (col: number) => 6 + col * (w + 2);
-    const y = (row: number) => TOP + 58 + row * (h + 2);
+    const right = L.W - 4;
+    label(this, 128, top + 5, 'CHARGE', COLOURS.dim);
+    label(this, right, top + 5, formatCents(this.total), COLOURS.gold, 'right');
+    label(this, 128, top + 21, 'KEY IT INTO', COLOURS.dim);
+    label(this, 128, top + 31, 'THE TERMINAL', COLOURS.dim);
+    this.messageText = label(this, Math.floor((128 + right) / 2), top + 44, '', COLOURS.red, 'center');
+
+    const gridY = top + RECEIPT_H + 3;
+    const sideW = 48;
+    const gap = 2;
+    const w = Math.floor((L.W - 12 - sideW - gap * 3) / 3);
+    const h = Math.min(40, Math.floor((this.floor - gridY - gap * 3) / 4));
+    const x = (col: number) => 6 + col * (w + gap);
+    const y = (row: number) => gridY + row * (h + gap);
     ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach((key, i) => {
       button(this, x(i % 3), y(Math.floor(i / 3)), w, h, key, () => this.pressKey(key), COLOURS.button, sfx.keypad);
     });
     button(this, x(0), y(3), w, h, 'CLR', () => this.pressKey('CLR'), 0x7d3a30, sfx.keypad);
-    button(this, x(1), y(3), w * 2 + 2, h, '0', () => this.pressKey('0'), COLOURS.button, sfx.keypad);
-    button(this, x(3), y(0), 48, h * 2 + 2, 'BACK', () => this.back());
-    button(this, x(3), y(2), 48, h * 2 + 2, 'OK', () => this.pressKey('OK'), COLOURS.accent, null);
+    button(this, x(1), y(3), w * 2 + gap, h, '0', () => this.pressKey('0'), COLOURS.button, sfx.keypad);
+    button(this, x(3), y(0), sideW, h * 2 + gap, 'BACK', () => this.back());
+    button(this, x(3), y(2), sideW, h * 2 + gap, 'OK', () => this.pressKey('OK'), COLOURS.accent, null);
 
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       if (/^[0-9]$/.test(e.key)) {
@@ -238,6 +263,26 @@ export class RegisterScene extends Phaser.Scene {
       } else if (e.key === 'Backspace') this.pressKey('CLR');
       else if (e.key === 'Enter') this.pressKey('OK');
     });
+  }
+
+  /** The terminal rises up from behind the counter, and sinks back when you're done. */
+  private buildTerminal() {
+    const x = Math.round(L.W * 0.42);
+    const restY = L.counterBottom - 34;
+    const body = this.add.image(0, 0, 'terminal');
+    this.displayText = label(this, 18, -18, '$0.00', COLOURS.green, 'right');
+    const caption = label(this, -18, -24, 'AMOUNT', 0x5fa877);
+    caption.setVisible(false);
+    const terminal = this.add.container(x, restY + 70, [body, this.displayText, caption]).setDepth(-1);
+    this.terminal = terminal;
+    sfx.pop();
+    this.tweens.add({ targets: terminal, y: restY, duration: 280, ease: 'Back.easeOut' });
+  }
+
+  private removeTerminal(then: () => void) {
+    if (!this.terminal) return then();
+    sfx.putBack();
+    this.tweens.add({ targets: this.terminal, y: this.terminal.y + 70, duration: 220, ease: 'Quad.easeIn', onComplete: then });
   }
 
   private pressKey(key: string) {
@@ -265,20 +310,25 @@ export class RegisterScene extends Phaser.Scene {
   /** Leaves payment without charging, with the items still on the table. */
   private back() {
     if (this.finished) return;
-    session.sale = null;
-    session.modal = false;
-    this.info.onBack();
-    this.scene.stop();
+    this.finished = true;
+    this.removeTerminal(() => {
+      session.sale = null;
+      session.modal = false;
+      this.info.onBack();
+      this.scene.stop();
+    });
   }
 
   private finish(text: string, color: number) {
     this.finished = true;
     this.messageText.setTint(color).setText(text);
-    this.time.delayedCall(900, () => {
-      session.sale = null;
-      session.modal = false;
-      this.info.onDone();
-      this.scene.stop();
+    this.time.delayedCall(this.terminal ? 650 : 900, () => {
+      this.removeTerminal(() => {
+        session.sale = null;
+        session.modal = false;
+        this.info.onDone();
+        this.scene.stop();
+      });
     });
   }
 }
