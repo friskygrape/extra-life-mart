@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { FONT_KEY } from './art/font';
 import { sfx } from './audio';
-import { L } from './layout';
+import { ACTION_H, L } from './layout';
 
 export const WIDTH = 216;
 export const HEIGHT = 384;
@@ -106,7 +106,7 @@ export const BUTTONS = {
   tabH: 24,
   stripW: 78,
   stripH: 26,
-  actionH: 36,
+  actionH: ACTION_H,
 };
 
 /** Screens at the minimum layout have this much usable width for full-width buttons. */

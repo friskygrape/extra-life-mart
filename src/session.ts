@@ -39,6 +39,8 @@ class Session {
   wants: string[] | null = null;
   /** Seconds the current customer has been waiting on you, which sets their tip. */
   serviceSeconds = 0;
+  /** True while the receipt and money appear, so the animation never costs a tip. */
+  servicePaused = false;
   payingCash = false;
   table: string[] = [];
   sale: ActiveSale | null = null;

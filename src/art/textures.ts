@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { L } from '../layout';
+import { L, drawerLayout } from '../layout';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -230,14 +230,19 @@ function drawShop(scene: Phaser.Scene) {
     rect(c, '#343c46', 41, 3, 4, 52);
     rect(c, '#2c2a33', 4, 5, 38, 18);
     rect(c, '#10231c', 5, 6, 36, 16);
-    // Keys
+    // The same keys as the keypad on screen: digits, CLR, 0, DEL and a tall OK
+    const key = (x: number, y: number, w: number, h: number, colour: string, shine: string) => {
+      rect(c, '#222830', x, y, w, h + 1);
+      rect(c, colour, x, y, w, h);
+      rect(c, shine, x, y, w, 1);
+    };
     for (let row = 0; row < 4; row++) {
       for (let col = 0; col < 3; col++) {
-        const colour = row === 3 ? (['#c9503f', '#d8dee6', '#2f9e6e'] as const)[col] : '#d8dee6';
-        rect(c, '#222830', 6 + col * 12, 26 + row * 7, 10, 6);
-        rect(c, colour, 6 + col * 12, 26 + row * 7, 10, 5);
+        const [colour, shine] = row < 3 || col === 1 ? ['#3a6a88', '#5f8ca6'] : col === 0 ? ['#7d3a30', '#a65a4e'] : ['#8c6d28', '#b5934a'];
+        key(4 + col * 9, 25 + row * 7, 8, 5, colour, shine);
       }
     }
+    key(31, 25, 10, 26, '#1f9c8a', '#4fc4b2');
     // Card reader slot along the bottom
     rect(c, '#14181c', 6, 53, 34, 1);
   });
@@ -379,24 +384,71 @@ const COINS: Record<number, { r: number; base: string; dark: string; light: stri
   5: { r: 13, base: '#98a0a8', dark: '#5c6470', light: '#c9ced4' },
 };
 
+/** Sizes of the money in the drawer, which follow the size of its slots. */
+export function drawerMoneySizes() {
+  const d = drawerLayout();
+  return { ...d, billW: Math.min(d.slotW - 8, 40), billSpriteH: Math.min(d.billH - 1, 64) };
+}
+
+/** The open drawer: dark slots in a teal tray, in the same colours as the till on the counter. */
+function drawDrawerTray(scene: Phaser.Scene) {
+  const d = drawerLayout();
+  canvasTexture(scene, 'drawer_tray', d.w, d.h, (c) => {
+    rect(c, '#2c2a33', 0, 0, d.w, d.h);
+    rect(c, '#1f6a68', 1, 1, d.w - 2, d.h - 2);
+    rect(c, '#2f8f8c', 1, 1, d.w - 2, 2);
+    const slot = (col: number, top: number, h: number) => {
+      const x = d.slotX(col) - d.x;
+      const y = top - d.y;
+      rect(c, '#0d2c2d', x, y, d.slotW, h);
+      rect(c, '#123c3d', x + 1, y + 3, d.slotW - 2, h - 3);
+      rect(c, '#07191a', x, y, d.slotW, 2);
+      // The floor of the slot catches the light
+      rect(c, '#1f6a68', x + 1, y + h - 1, d.slotW - 2, 1);
+    };
+    for (let col = 0; col < 4; col++) {
+      slot(col, d.billTop, d.billH);
+      slot(col, d.coinTop, d.coinH);
+    }
+    // Metal dividers between the slots
+    for (let col = 1; col < 4; col++) {
+      const x = d.slotX(col) - d.x - d.divider;
+      rect(c, '#8c969e', x, 2, d.divider, d.h - 4);
+      rect(c, '#c6ced4', x, 2, 1, d.h - 4);
+    }
+    const shelfY = d.coinTop - d.y - d.divider;
+    rect(c, '#8c969e', 2, shelfY, d.w - 4, d.divider);
+    rect(c, '#c6ced4', 2, shelfY, d.w - 4, 1);
+  });
+}
+
 function drawMoney(scene: Phaser.Scene) {
+  const drawer = drawerMoneySizes();
+  drawDrawerTray(scene);
   for (const [cents, b] of Object.entries(BILLS)) {
-    canvasTexture(scene, `money_${cents}`, 50, 30, (c) => {
-      rect(c, b.dark, 0, 0, 50, 30);
-      rect(c, b.base, 1, 1, 48, 28);
-      rect(c, b.dark, 3, 3, 44, 1);
-      rect(c, b.dark, 3, 26, 44, 1);
-      rect(c, b.dark, 3, 3, 1, 24);
-      rect(c, b.dark, 46, 3, 1, 24);
-      [[5, 5], [41, 5], [5, 21], [41, 21]].forEach(([x, y]) => {
-        rect(c, b.light, x, y, 4, 4);
-        rect(c, b.dark, x + 1, y + 1, 2, 2);
-      });
-      for (let y = 6; y < 25; y += 3) rect(c, b.light, 10, y, 30, 1);
-      rect(c, '#efe8cf', 12, 8, 26, 14);
-      rect(c, '#efe8cf', 10, 10, 30, 10);
-      rect(c, b.dark, 12, 8, 26, 1);
-      rect(c, b.dark, 12, 21, 26, 1);
+    // Bills stand on end in the drawer, with a couple more showing behind the front one
+    canvasTexture(scene, `drawer_${cents}`, drawer.billW, drawer.billSpriteH, (c) => {
+      const w = drawer.billW - 2;
+      const h = drawer.billSpriteH;
+      rect(c, b.dark, 2, 0, w, h);
+      rect(c, b.light, 3, 1, w - 2, 1);
+      rect(c, '#2c2a33', 0, 3, w, h - 3);
+      rect(c, b.dark, 1, 3, w - 2, 1);
+      rect(c, b.dark, 0, 5, w, h - 5);
+      rect(c, b.base, 1, 6, w - 2, h - 7);
+      rect(c, b.dark, 3, 8, w - 6, 1);
+      rect(c, b.dark, 3, h - 4, w - 6, 1);
+      rect(c, b.dark, 3, 8, 1, h - 11);
+      rect(c, b.dark, w - 4, 8, 1, h - 11);
+      for (const [cx, cy] of [[5, 10], [w - 9, 10], [5, h - 9], [w - 9, h - 9]]) {
+        rect(c, b.light, cx, cy, 4, 4);
+        rect(c, b.dark, cx + 1, cy + 1, 2, 2);
+      }
+      // The pale panel behind the printed value
+      const mid = 5 + Math.floor((h - 5) / 2);
+      rect(c, '#efe8cf', 5, mid - 7, w - 10, 14);
+      rect(c, b.dark, 5, mid - 8, w - 10, 1);
+      rect(c, b.dark, 5, mid + 7, w - 10, 1);
     });
     // The same bill redrawn at desk size, with its border, corners and centre panel
     canvasTexture(scene, `desk_${cents}`, 32, 19, (c) => {
@@ -415,21 +467,32 @@ function drawMoney(scene: Phaser.Scene) {
     });
   }
   for (const [cents, m] of Object.entries(COINS)) {
-    const size = m.r * 2 + 1;
-    canvasTexture(scene, `money_${cents}`, size, size, (c) => {
-      disc(c, m.dark, m.r, m.r, m.r);
-      disc(c, m.base, m.r, m.r, m.r - 1);
-      disc(c, m.light, m.r - 1, m.r - 1, m.r - 3);
-      disc(c, m.base, m.r, m.r, m.r - 3);
+    // A small pile in its cup: two coins behind the labelled one
+    const r = Math.min(m.r, Math.floor((drawer.coinH - 6) / 2));
+    const sideways = Math.floor((drawer.slotW - 2 * r - 3) / 2);
+    const w = drawer.slotW;
+    const h = 2 * r + 5;
+    canvasTexture(scene, `drawer_${cents}`, w, h, (c) => {
+      const coin = (cx: number, cy: number) => {
+        disc(c, '#14100e', cx, cy + 1, r);
+        disc(c, m.dark, cx, cy, r);
+        disc(c, m.base, cx, cy, r - 1);
+        disc(c, m.light, cx - 1, cy - 1, r - 3);
+        disc(c, m.base, cx, cy, r - 3);
+      };
+      const mid = Math.floor(w / 2);
+      coin(mid - sideways, r);
+      coin(mid + sideways, r);
+      coin(mid, r + 3);
     });
-    const r = Math.max(7, Math.round(m.r * 0.6));
-    canvasTexture(scene, `desk_${cents}`, r * 2 + 3, r * 2 + 3, (c) => {
-      const mid = r + 1;
-      disc(c, m.dark, mid, mid, r);
-      disc(c, m.base, mid, mid, r - 1);
-      disc(c, m.light, mid - 1, mid - 1, r - 2);
-      disc(c, m.base, mid, mid, r - 2);
-      outline(c, r * 2 + 3, r * 2 + 3, '#2c2a33');
+    const deskR = Math.max(7, Math.round(m.r * 0.6));
+    canvasTexture(scene, `desk_${cents}`, deskR * 2 + 3, deskR * 2 + 3, (c) => {
+      const mid = deskR + 1;
+      disc(c, m.dark, mid, mid, deskR);
+      disc(c, m.base, mid, mid, deskR - 1);
+      disc(c, m.light, mid - 1, mid - 1, deskR - 2);
+      disc(c, m.base, mid, mid, deskR - 2);
+      outline(c, deskR * 2 + 3, deskR * 2 + 3, '#2c2a33');
     });
   }
 }

@@ -105,5 +105,31 @@ export const bubbleX = () => portraitX() + 27;
 export const bubbleY = () => Math.max(L.windowY + 8, L.counterTop - 88);
 export const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
 
-/** Height of a printed receipt with this many item lines. Cash adds Amount Paid and Change Due. */
-export const receiptHeight = (lines: number, cash: boolean) => 18 + lines * 9 + (cash ? 23 : 0);
+/** Height of a printed receipt with this many item lines. Its last row is highlighted, and cash adds Amount Paid. */
+export const receiptHeight = (lines: number, cash: boolean) => 26 + lines * 9 + (cash ? 22 : 0);
+
+/** Height of the buttons below the cash drawer. */
+export const ACTION_H = 36;
+/** Height of the figure at the top of the payment area, including the gaps around it. */
+export const PAYMENT_PANEL_H = 32;
+
+/** Where the open cash drawer sits: four tall bill slots above four coin cups. */
+export function drawerLayout() {
+  const x = 2;
+  const w = L.W - 4;
+  const y = L.counterBottom + PAYMENT_PANEL_H;
+  const h = L.H - L.safeBottom - 3 - ACTION_H - 2 - y;
+  const pad = 3;
+  const divider = 2;
+  const slotW = Math.floor((w - pad * 2 - divider * 3) / 4);
+  const left = x + Math.floor((w - slotW * 4 - divider * 3) / 2);
+  const inner = h - pad * 2 - divider;
+  const billH = Math.floor(inner * 0.56);
+  const coinH = inner - billH;
+  const billTop = y + pad;
+  const coinTop = billTop + billH + divider;
+  return {
+    x, y, w, h, slotW, billH, coinH, billTop, coinTop, divider,
+    slotX: (col: number) => left + col * (slotW + divider),
+  };
+}

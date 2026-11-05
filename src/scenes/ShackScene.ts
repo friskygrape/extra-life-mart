@@ -233,6 +233,9 @@ export class ShackScene extends Phaser.Scene {
     session.events.on('shelves-changed', this.refreshShelves, this);
     session.events.on('begin-day', this.beginDay, this);
     session.events.on('say', this.say, this);
+    session.events.on('show-tender', () => {
+      if (this.current) this.showPayment(this.current);
+    });
     session.events.on('order-placed', (rush: boolean) => {
       if (rush) this.deliveryIn = DELIVERY_SECONDS;
     });
@@ -347,7 +350,7 @@ export class ShackScene extends Phaser.Scene {
     this.tipBar.setVisible(serving);
     this.tipBarBack.setVisible(serving);
     if (!serving) return;
-    session.serviceSeconds += dt;
+    if (!session.servicePaused) session.serviceSeconds += dt;
     const limit = greatServiceSeconds(customer.wants.length) * SLOW_TIMES;
     const left = Math.max(0, 1 - session.serviceSeconds / limit);
     this.tipBar.setSize(Math.max(0, Math.round((TIP_BAR_W - 2) * left)), 1);
@@ -623,7 +626,6 @@ export class ShackScene extends Phaser.Scene {
       ease: 'Quad.easeOut',
       onComplete: () => {
         this.busy = false;
-        this.showPayment(customer);
         // With nothing at all on the shelves, they say so and move on.
         if (customer.wants.length === 0) {
           this.spoken = emptyShelfComment();
@@ -668,7 +670,7 @@ export class ShackScene extends Phaser.Scene {
     });
   }
 
-  /** Once they've arrived, their cash or card comes down onto the counter. */
+  /** Once the order is ready, their cash or card comes down onto the counter. */
   private showPayment(customer: Customer) {
     if (customer.wants.length === 0) return;
     const held = customer.paidByCash ? this.heldMoney : this.heldCard;
@@ -809,6 +811,7 @@ export class ShackScene extends Phaser.Scene {
         this.refreshStars();
       },
       onBack: () => {
+        this.hidePayment();
         this.setDeskClear(false);
         this.receiptLines = null;
         this.readyToPay = true;
