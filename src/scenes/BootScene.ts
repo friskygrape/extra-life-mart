@@ -10,6 +10,6 @@ export class BootScene extends Phaser.Scene {
   create() {
     createPixelFont(this);
     createTextures(this);
-    this.scene.start('Shop');
+    this.scene.start('Shack');
   }
 }

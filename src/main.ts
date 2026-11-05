@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
-import { HudScene } from './scenes/HudScene';
 import { OrderScene } from './scenes/OrderScene';
 import { RegisterScene } from './scenes/RegisterScene';
-import { ShopScene } from './scenes/ShopScene';
+import { ShackScene } from './scenes/ShackScene';
 import { StockScene } from './scenes/StockScene';
 import { SummaryScene } from './scenes/SummaryScene';
 import { session } from './session';
@@ -18,15 +17,15 @@ const game = new Phaser.Game({
   pixelArt: true,
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE },
-  scene: [BootScene, ShopScene, HudScene, OrderScene, StockScene, RegisterScene, SummaryScene],
+  scene: [BootScene, ShackScene, OrderScene, StockScene, RegisterScene, SummaryScene],
 });
 
-/** Scale to fill the screen, snapped to whole device pixels so every art pixel is the same size. */
+/** Scale to fill the screen, snapped to half device pixels to keep the art pixels crisp and even. */
 function fitToScreen() {
   const parent = document.getElementById('game')!;
   const dpr = window.devicePixelRatio || 1;
   const fit = Math.min(parent.clientWidth / WIDTH, parent.clientHeight / HEIGHT);
-  game.scale.setZoom(Math.max(1, Math.floor(fit * dpr)) / dpr);
+  game.scale.setZoom(Math.max(1, Math.floor(fit * dpr * 2) / 2) / dpr);
 }
 
 game.events.once(Phaser.Core.Events.READY, fitToScreen);

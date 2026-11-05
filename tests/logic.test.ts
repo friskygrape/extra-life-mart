@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { isWalkable, QUEUE_SPOTS, SHELF_SPOTS, PLAYER_REGISTER_SPOT, ENTRANCE, neighbours } from '../src/data/map';
-import { getProduct, PRODUCTS, SHELF_CAPACITY } from '../src/data/products';
+import { SHELF_SLOTS } from '../src/data/shelves';
+import { getProduct, SHELF_CAPACITY } from '../src/data/products';
+import { checkHandOver, requestLines } from '../src/logic/basket';
 import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
 import { buildWishlist } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
-import { emptyShelf, findShelfWith, stockShelf, takeFromShelf } from '../src/logic/inventory';
+import { emptyShelf, findShelfWith, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
 import { customerTender, formatCents } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder } from '../src/logic/orders';
-import { findPath } from '../src/logic/pathfinding';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
 import { newGame } from '../src/logic/state';
 
-const foodShelf = () => SHELF_SPOTS.find((s) => s.kind === 'food')!.id;
-const gameShelf = () => SHELF_SPOTS.find((s) => s.kind === 'game')!.id;
+const foodShelf = () => SHELF_SLOTS.find((s) => s.kind === 'food')!.id;
+const gameShelf = () => SHELF_SLOTS.find((s) => s.kind === 'game')!.id;
 
 function memoryStore(): SaveStore {
   const data = new Map<string, string>();
@@ -205,32 +205,56 @@ describe('wishlists', () => {
   });
 });
 
-describe('map and pathfinding', () => {
-  const customerOpen = (t: { x: number; y: number }) => isWalkable(t.x, t.y, true);
-  const playerOpen = (t: { x: number; y: number }) => isWalkable(t.x, t.y, false);
+describe('handing items over', () => {
+  const never = () => false;
+  it('accepts exactly what was asked for', () => {
+    expect(checkHandOver(['chips', 'soda'], ['soda', 'chips'], never)).toEqual({ status: 'ok', missed: 0 });
+  });
+  it('refuses the wrong item or too many', () => {
+    expect(checkHandOver(['chips'], ['soda'], never)).toEqual({ status: 'extra', productId: 'soda' });
+    expect(checkHandOver(['chips'], ['chips', 'chips'], never)).toEqual({ status: 'extra', productId: 'chips' });
+  });
+  it('refuses to skip an item that is still on a shelf', () => {
+    expect(checkHandOver(['chips', 'soda'], ['chips'], (id) => id === 'soda')).toEqual({
+      status: 'still-on-shelf',
+      productId: 'soda',
+    });
+  });
+  it('counts sold-out items as missed sales', () => {
+    expect(checkHandOver(['chips', 'chips', 'soda'], ['chips'], never)).toEqual({ status: 'ok', missed: 2 });
+  });
+  it('lets you send someone away only if you have nothing they want', () => {
+    expect(checkHandOver(['chips', 'soda'], [], never)).toEqual({ status: 'nothing', missed: 2 });
+    expect(checkHandOver(['chips'], [], () => true).status).toBe('still-on-shelf');
+  });
+  it('groups the request and marks finished lines', () => {
+    expect(requestLines(['chips', 'chips', 'soda'], ['chips', 'soda'])).toEqual([
+      { productId: 'chips', qty: 2, done: false },
+      { productId: 'soda', qty: 1, done: true },
+    ]);
+  });
+});
 
-  it('has one shelf per product', () => {
-    expect(SHELF_SPOTS.filter((s) => s.kind === 'food').length).toBe(PRODUCTS.filter((p) => p.kind === 'food').length);
-    expect(SHELF_SPOTS.filter((s) => s.kind === 'game').length).toBe(PRODUCTS.filter((p) => p.kind === 'game').length);
+describe('putting items back', () => {
+  it('goes back on the shelf holding that product', () => {
+    const s = newGame();
+    stockShelf(s, foodShelf(), 'chips', 3);
+    takeFromShelf(s, foodShelf(), 'chips');
+    returnItem(s, 'chips');
+    expect(findShelfWith(s, 'chips')?.qty).toBe(3);
   });
-  it('every queue spot is on open floor and unique', () => {
-    QUEUE_SPOTS.forEach((s) => expect(customerOpen(s)).toBe(true));
-    expect(new Set(QUEUE_SPOTS.map((s) => `${s.x},${s.y}`)).size).toBe(QUEUE_SPOTS.length);
+  it('uses an empty shelf if its own has run out', () => {
+    const s = newGame();
+    stockShelf(s, foodShelf(), 'chips', 1);
+    takeFromShelf(s, foodShelf(), 'chips');
+    returnItem(s, 'chips');
+    expect(findShelfWith(s, 'chips')?.qty).toBe(1);
   });
-  it('customers can reach every shelf and the queue from the door', () => {
-    for (const shelf of SHELF_SPOTS) expect(findPath(ENTRANCE, neighbours(shelf), customerOpen)).not.toBeNull();
-    expect(findPath(ENTRANCE, [QUEUE_SPOTS[0]], customerOpen)).not.toBeNull();
-  });
-  it('the player can reach the register but cannot leave through the entrance', () => {
-    expect(findPath({ x: 5, y: 9 }, [PLAYER_REGISTER_SPOT], playerOpen)).not.toBeNull();
-    expect(findPath({ x: 5, y: 9 }, [ENTRANCE], playerOpen)).toBeNull();
-  });
-  it('finds a shortest path that only takes single steps', () => {
-    const path = findPath({ x: 1, y: 4 }, [{ x: 1, y: 8 }], customerOpen)!;
-    expect(path).toHaveLength(4);
-    expect(path.at(-1)).toEqual({ x: 1, y: 8 });
-  });
-  it('returns an empty path when already at the goal', () => {
-    expect(findPath({ x: 1, y: 4 }, [{ x: 1, y: 4 }], customerOpen)).toEqual([]);
+  it('goes to the back room when every shelf is taken', () => {
+    const s = newGame();
+    s.shelves.forEach((shelf) => Object.assign(shelf, { productId: shelf.kind === 'food' ? 'soda' : 'golf', qty: 1 }));
+    s.stockroom.chips = 0;
+    returnItem(s, 'chips');
+    expect(s.stockroom.chips).toBe(1);
   });
 });

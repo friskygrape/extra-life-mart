@@ -34,7 +34,9 @@ class Session {
   modal = false;
   clock = 0;
   readonly dayLength = dayLengthSeconds();
-  queueReady = 0;
+  waiting = 0;
+  wants: string[] | null = null;
+  table: string[] = [];
   sale: ActiveSale | null = null;
   message = '';
   messageUntil = 0;

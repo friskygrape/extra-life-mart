@@ -47,3 +47,18 @@ export function takeFromShelf(state: GameState, shelfId: string, productId: stri
   if (shelf.qty === 0) shelf.productId = null;
   return true;
 }
+
+/** Puts one unit back: on a shelf already holding it, else an empty shelf, else in the back room. */
+export function returnItem(state: GameState, productId: string): void {
+  const product = getProduct(productId);
+  const room = SHELF_CAPACITY[product.kind];
+  const shelf =
+    state.shelves.find((s) => s.productId === productId && s.qty < room) ??
+    state.shelves.find((s) => s.kind === product.kind && s.qty === 0);
+  if (!shelf) {
+    state.stockroom[productId] = (state.stockroom[productId] ?? 0) + 1;
+    return;
+  }
+  shelf.productId = productId;
+  shelf.qty += 1;
+}

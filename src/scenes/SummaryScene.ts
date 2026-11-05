@@ -36,13 +36,13 @@ export class SummaryScene extends Phaser.Scene {
     label(this, WIDTH - 10, 152, formatCents(summary.balance), COLOURS.gold, 'right');
     if (summary.newBest) label(this, WIDTH / 2, 172, 'NEW BEST DAY!', COLOURS.gold, 'center');
 
-    button(this, 30, 200, 120, 40, 'NEXT DAY', () => {
+    button(this, 48, 214, 120, 40, 'NEXT DAY', () => {
       if (starterBox) session.toast('SUPPLIER SENT A FREE BOX', 4000);
       else if (delivered > 0) session.toast(`DELIVERY: ${delivered} ITEMS`, 4000);
       this.toNextDay();
     }, COLOURS.accent);
 
-    const reset = button(this, 30, 264, 120, 26, 'START OVER', () => {
+    const reset = button(this, 48, 300, 120, 28, 'START OVER', () => {
       if (!this.confirmingReset) {
         this.confirmingReset = true;
         reset.setLabel('TAP TO CONFIRM');

@@ -15,7 +15,7 @@ export function buildWishlist(rng: () => number = Math.random): string[] {
 
 /** Seconds until the next customer walks in. Gets a little busier each day, up to a limit. */
 export function nextSpawnDelay(day: number, rng: () => number = Math.random): number {
-  const base = Math.max(9, 18 - day);
+  const base = Math.max(12, 22 - day);
   return base * (0.7 + rng() * 0.6);
 }
 

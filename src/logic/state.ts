@@ -1,4 +1,4 @@
-import { SHELF_SPOTS } from '../data/map';
+import { SHELF_SLOTS } from '../data/shelves';
 import type { ProductKind } from '../data/products';
 
 export interface ShelfState {
@@ -27,7 +27,7 @@ export interface GameState {
   bestProfit: number | null;
 }
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export function emptyStats(): DayStats {
   return { revenue: 0, orderSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
@@ -40,7 +40,7 @@ export function newGame(): GameState {
     balance: 20000,
     stockroom: { chips: 10, soda: 10, choco: 8, noodle: 6, golf: 2, mops: 2 },
     pendingOrders: {},
-    shelves: SHELF_SPOTS.map((s) => ({ id: s.id, kind: s.kind, productId: null, qty: 0 })),
+    shelves: SHELF_SLOTS.map((s) => ({ id: s.id, kind: s.kind, productId: null, qty: 0 })),
     stats: emptyStats(),
     bestProfit: null,
   };

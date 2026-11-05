@@ -1,24 +1,24 @@
 import Phaser from 'phaser';
 import { FONT_KEY } from './art/font';
 
-export const WIDTH = 180;
-export const HEIGHT = 320;
+export const WIDTH = 216;
+export const HEIGHT = 384;
 
 export const COLOURS = {
-  bg: 0x1a1626,
-  panel: 0x2a2440,
-  panelLight: 0x3b3556,
-  border: 0x5d5585,
-  white: 0xf4efe2,
-  dim: 0xa59fc2,
-  gold: 0xf2b84b,
-  green: 0x8df0a1,
-  red: 0xff7a70,
-  button: 0x46406b,
-  buttonPressed: 0x2c2742,
-  accent: 0x2f9e6e,
-  ink: 0x2a2440,
-  paper: 0xf4efe2,
+  bg: 0x171b1e,
+  panel: 0x232b2e,
+  panelLight: 0x38474a,
+  border: 0x5a4a42,
+  white: 0xece3cc,
+  dim: 0x93a3a0,
+  gold: 0xf0b04a,
+  green: 0x8fe0a0,
+  red: 0xf0705f,
+  button: 0x3d4c4f,
+  buttonPressed: 0x232b2e,
+  accent: 0x2f8a68,
+  ink: 0x2b2420,
+  paper: 0xe9dfc2,
 };
 
 export type Align = 'left' | 'center' | 'right';
@@ -90,6 +90,6 @@ export function button(
 }
 
 /** Full-screen backing that also stops taps reaching the shop underneath. */
-export function backdrop(scene: Phaser.Scene): Phaser.GameObjects.Rectangle {
-  return scene.add.rectangle(0, 0, WIDTH, HEIGHT, COLOURS.bg).setOrigin(0).setInteractive();
+export function backdrop(scene: Phaser.Scene, top = 0): Phaser.GameObjects.Rectangle {
+  return scene.add.rectangle(0, top, WIDTH, HEIGHT - top, COLOURS.bg).setOrigin(0).setInteractive();
 }
