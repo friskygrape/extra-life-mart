@@ -105,5 +105,5 @@ export const bubbleX = () => portraitX() + 27;
 export const bubbleY = () => Math.max(L.windowY + 8, L.counterTop - 88);
 export const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
 
-/** Height of a printed receipt with this many item lines. */
-export const receiptHeight = (lines: number) => 18 + lines * 9;
+/** Height of a printed receipt with this many item lines. Cash adds Amount Paid and Change Due. */
+export const receiptHeight = (lines: number, cash: boolean) => 18 + lines * 9 + (cash ? 23 : 0);

@@ -451,7 +451,7 @@ export class ShackScene extends Phaser.Scene {
         this.busy = false;
         this.showPayment(customer);
         this.renderBubble();
-        // With nothing at all on the shelves, they say so and move on.
+        // With nothing at all on the shelves, they move on.
         if (customer.wants.length === 0) {
           this.time.delayedCall(EMPTY_HANDED_MS, () => {
             if (this.current === customer) this.dismiss();
@@ -549,7 +549,7 @@ export class ShackScene extends Phaser.Scene {
     };
 
     // The list: finished lines become a solid green row with a check mark
-    let y = this.receiptLines === null ? bubbleY() + 3 : this.receiptTop + receiptHeight(this.receiptLines) + 10;
+    let y = this.receiptLines === null ? bubbleY() + 3 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 10;
     if (hasList) {
       requestLines(customer.wants, session.table).forEach((line) => {
         const name = getProduct(line.productId).name;
@@ -568,10 +568,10 @@ export class ShackScene extends Phaser.Scene {
 
     // Anything else they say goes in its own bubble below
     const speechTop = y - 3;
-    const wish = customer.wished.length > 0 ? `I WISH YOU HAD ${getProduct(customer.wished[0]).name}` : '';
-    if (this.spoken) y += put(y, this.spoken, this.spokenColour).height + 2;
-    if (wish) y += put(y, wish, 0x6d6352).height + 2;
-    if (this.spoken || wish) place(this.speech, this.speechTail, speechTop, y + 1);
+    if (this.spoken) {
+      y += put(y, this.spoken, this.spokenColour).height + 2;
+      place(this.speech, this.speechTail, speechTop, y + 1);
+    }
   }
 
   private pressAction() {
@@ -590,8 +590,8 @@ export class ShackScene extends Phaser.Scene {
     this.setDeskClear(true);
     this.receiptLines = Math.min(items.length, 4);
     // Moves up if needed, so the receipt and speech bubble stay clear of the things on the counter.
-    const speechH = customer.wished.length > 0 ? 34 : 14;
-    this.receiptTop = Math.max(L.windowY + 8, Math.min(bubbleY(), L.counterTop - 20 - speechH - 8 - receiptHeight(this.receiptLines)));
+    const speechH = 14;
+    this.receiptTop = Math.max(L.windowY + 8, Math.min(bubbleY(), L.counterTop - 20 - speechH - 8 - receiptHeight(this.receiptLines, customer.paidByCash)));
     this.renderBubble();
     this.openModal('Register', {
       items,

@@ -18,8 +18,10 @@ interface RegisterData {
 }
 
 const CASH_PROMPT = 'PROVIDE CHANGE TO THE CUSTOMER';
+const CARD_PROMPT = 'TAP OUTSIDE THE KEYPAD TO CANCEL';
 const SUCCESS_INK = 0x0b6b3a;
 const MAX_RECEIPT_LINES = 4;
+const RECEIPT_MIN_W = 116;
 const PRINT_LINE_MS = 70;
 const denominationLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}C`);
 const deskLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}`);
@@ -88,11 +90,12 @@ export class RegisterScene extends Phaser.Scene {
 
   /** Prints line by line beside the customer, in the same spot the item list was. */
   private printReceipt(items: string[], cash: boolean) {
-    const x = bubbleX();
+    // Wide enough for AMOUNT PAID and its price, leaning over the customer's shoulder on narrow screens.
+    const w = Math.max(bubbleW(), RECEIPT_MIN_W);
+    const x = Math.min(bubbleX(), L.W - 3 - w);
     const y = this.info.receiptTop;
-    const w = bubbleW();
     const lines = items.slice(0, MAX_RECEIPT_LINES);
-    const height = receiptHeight(lines.length);
+    const height = receiptHeight(lines.length, cash);
     const paper = this.add.graphics();
     drawPaper(paper, x, y, w, 5, false);
     lines.forEach((id, i) => {
@@ -110,8 +113,16 @@ export class RegisterScene extends Phaser.Scene {
       drawPaper(paper, x, y, w, height, true);
       const ruleY = y + 3 + lines.length * 9;
       this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
-      label(this, x + 3, ruleY + 3, cash ? 'CASH TOTAL' : 'TOTAL', COLOURS.ink);
-      label(this, x + w - 3, ruleY + 3, formatCents(this.total), COLOURS.ink, 'right');
+      const row = (rowY: number, name: string, value: string) => {
+        label(this, x + 3, rowY, name, COLOURS.ink);
+        label(this, x + w - 3, rowY, value, COLOURS.ink, 'right');
+      };
+      row(ruleY + 3, cash ? 'CASH TOTAL' : 'TOTAL', formatCents(this.total));
+      if (cash) {
+        row(ruleY + 12, 'AMOUNT PAID', formatCents(this.tendered));
+        this.add.rectangle(x + 3, ruleY + 22, w - 6, 1, COLOURS.ink).setOrigin(0);
+        row(ruleY + 25, 'CHANGE DUE', formatCents(this.tendered - this.total));
+      }
     });
   }
 
@@ -126,20 +137,14 @@ export class RegisterScene extends Phaser.Scene {
 
   private buildCash() {
     const top = this.top;
-    const smallRow = (y: number, name: string, value: string) => {
-      label(this, 8, y, name, COLOURS.dim);
-      label(this, L.W - 8, y, value, COLOURS.dim, 'right');
-    };
-    smallRow(top + 3, 'CASH TOTAL', formatCents(this.total));
-    smallRow(top + 13, 'AMOUNT PAID', formatCents(this.tendered));
-    this.headline(top + 23, 'CHANGE DUE', formatCents(this.tendered - this.total));
-    label(this, 8, top + 52, 'GIVEN', COLOURS.dim);
-    this.givenText = label(this, L.W - 8, top + 52, '$0.00', COLOURS.white, 'right');
-    this.messageText = label(this, Math.floor(L.W / 2), top + 63, CASH_PROMPT, COLOURS.dim, 'center');
+    this.headline(top + 3, 'CHANGE DUE', formatCents(this.tendered - this.total));
+    label(this, 8, top + 32, 'GIVEN', COLOURS.dim);
+    this.givenText = label(this, L.W - 8, top + 32, '$0.00', COLOURS.white, 'right');
+    this.messageText = label(this, Math.floor(L.W / 2), top + 43, CASH_PROMPT, COLOURS.dim, 'center');
 
-    const moneyY = top + 73;
+    const moneyY = top + 53;
     const actionsY = this.floor - BUTTONS.actionH;
-    const cellH = Math.min(46, Math.floor((actionsY - moneyY - 2) / 2) - 2);
+    const cellH = Math.min(52, Math.floor((actionsY - moneyY - 2) / 2) - 2);
     const cellW = Math.floor((L.W - 8) / 4);
     DENOMINATIONS.forEach((cents, i) => {
       const cx = 4 + (i % 4) * cellW + Math.floor(cellW / 2);
@@ -264,24 +269,28 @@ export class RegisterScene extends Phaser.Scene {
     const top = this.top;
     this.buildTerminal();
     this.headline(top + 3, 'AMOUNT DUE', formatCents(this.total));
-    this.messageText = label(this, Math.floor(L.W / 2), top + 33, 'KEY IT INTO THE TERMINAL', COLOURS.dim, 'center');
+    this.messageText = label(this, Math.floor(L.W / 2), top + 31, CARD_PROMPT, COLOURS.dim, 'center');
 
-    const gridY = top + 44;
+    // One keypad, laid out like a real terminal, filling all the space down to the bottom.
+    const gridY = top + 41;
     const gap = 2;
-    const actionsY = this.floor - BUTTONS.actionH;
-    const w = Math.floor((L.W - 8 - gap * 2) / 3);
-    const h = Math.min(40, Math.floor((actionsY - gridY - gap * 4) / 4));
+    const w = Math.floor((L.W - 8 - gap * 3) / 4);
+    const okW = L.W - 8 - gap * 3 - w * 3;
+    const h = Math.floor((this.floor - gridY - gap * 3) / 4);
     const x = (col: number) => 4 + col * (w + gap);
     const y = (row: number) => gridY + row * (h + gap);
     ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach((key, i) => {
       button(this, x(i % 3), y(Math.floor(i / 3)), w, h, key, () => this.pressKey(key), COLOURS.button, sfx.keypad);
     });
+    button(this, x(0), y(3), w, h, 'CLR', () => this.pressKey('CLR'), 0x7d3a30, sfx.keypad);
     button(this, x(1), y(3), w, h, '0', () => this.pressKey('0'), COLOURS.button, sfx.keypad);
-    this.actionsRow(
-      ['DEL', () => { sfx.keypad(); this.pressKey('DEL'); }],
-      ['CLR', () => { sfx.keypad(); this.pressKey('CLR'); }],
-      ['OK', () => this.pressKey('OK')],
-    );
+    button(this, x(2), y(3), w, h, 'DEL', () => this.pressKey('DEL'), 0x8c6d28, sfx.keypad);
+    button(this, x(3), y(0), okW, h * 4 + gap * 3, 'OK', () => this.pressKey('OK'), COLOURS.accent, null);
+
+    // Tapping anywhere outside the payment area backs out. The menu button stays reachable.
+    const outsideTop = L.hudH + 8;
+    this.add.rectangle(0, outsideTop, L.W, top - outsideTop, 0xffffff, 0).setOrigin(0).setDepth(-2)
+      .setInteractive().on('pointerup', () => this.back());
 
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       if (/^[0-9]$/.test(e.key)) {
@@ -296,7 +305,8 @@ export class RegisterScene extends Phaser.Scene {
   private buildTerminal() {
     const x = 106;
     const restY = L.counterBottom - 34;
-    const body = this.add.image(0, 0, 'terminal');
+    // Tapping the terminal itself shouldn't count as tapping outside.
+    const body = this.add.image(0, 0, 'terminal').setInteractive();
     this.displayText = label(this, 16, -18, '$0.00', COLOURS.green, 'right');
     const caption = label(this, -18, -24, 'AMOUNT', 0x5fa877);
     caption.setVisible(false);
@@ -321,7 +331,7 @@ export class RegisterScene extends Phaser.Scene {
       this.finish('APPROVED. THANKS!', SUCCESS_INK);
       return;
     }
-    this.messageText.setText('');
+    this.messageText.setTint(COLOURS.dim).setText(CARD_PROMPT);
     if (key === 'CLR') this.entered = 0;
     else if (key === 'DEL') this.entered = Math.floor(this.entered / 10);
     else this.entered = Math.min(this.entered * 10 + Number(key), 9999999);
