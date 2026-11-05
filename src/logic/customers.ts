@@ -39,6 +39,18 @@ export function buildRequest(state: GameState, rng: () => number = Math.random):
   return { wants, wished };
 }
 
+const EMPTY_SHELF_COMMENTS = [
+  'WHERE IS ALL THE FOOD?',
+  'THESE SHELVES ARE EMPTY!',
+  'NOTHING TO BUY HERE?',
+  "EMPTY SHELVES? I'LL GO ELSEWHERE.",
+];
+
+/** What a customer says on finding nothing at all to buy, just before leaving. */
+export function emptyShelfComment(rng: () => number = Math.random): string {
+  return EMPTY_SHELF_COMMENTS[Math.floor(rng() * EMPTY_SHELF_COMMENTS.length)];
+}
+
 /** Seconds until the next customer joins the line. Gets a little busier each day, up to a limit. */
 export function nextSpawnDelay(day: number, rng: () => number = Math.random): number {
   const base = Math.max(12, 22 - day);

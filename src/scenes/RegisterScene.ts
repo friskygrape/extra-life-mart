@@ -59,17 +59,6 @@ export class RegisterScene extends Phaser.Scene {
     return L.H - L.safeBottom - 3;
   }
 
-  /** The same row of buttons on cash and card, in the same places. */
-  private actionsRow(third: [string, () => void], fourth: [string, () => void], last: [string, () => void]) {
-    const y = this.floor - BUTTONS.actionH;
-    const small = Math.floor((L.W - 14) * 0.2);
-    button(this, 4, y, small, BUTTONS.actionH, 'BACK', () => this.back());
-    button(this, 6 + small, y, small, BUTTONS.actionH, third[0], third[1]);
-    button(this, 8 + small * 2, y, small, BUTTONS.actionH, fourth[0], fourth[1]);
-    const lastX = 10 + small * 3;
-    button(this, lastX, y, L.W - lastX - 4, BUTTONS.actionH, last[0], last[1], COLOURS.accent, null);
-  }
-
   create(data: RegisterData) {
     this.info = data;
     this.total = data.total;
@@ -86,6 +75,21 @@ export class RegisterScene extends Phaser.Scene {
     if (data.paidByCash) this.buildCash();
     else this.buildCard();
     this.input.keyboard?.on('keydown-ESC', () => this.back());
+    this.addCancelArea(data.paidByCash);
+  }
+
+  /**
+   * Tapping outside the payment area backs out. The menu button stays reachable.
+   * For cash the counter counts as part of the payment, so a near miss on your change can't lose it.
+   */
+  private addCancelArea(cash: boolean) {
+    const outsideTop = L.hudH + 8;
+    const outsideBottom = cash ? L.counterTop : this.top;
+    this.add.rectangle(0, outsideTop, L.W, outsideBottom - outsideTop, 0xffffff, 0).setOrigin(0).setDepth(-2)
+      .setInteractive().on('pointerup', () => this.back());
+    if (cash) {
+      this.add.rectangle(0, L.counterTop, L.W, this.top - L.counterTop, 0xffffff, 0).setOrigin(0).setDepth(-2).setInteractive();
+    }
   }
 
   /** Prints line by line beside the customer, in the same spot the item list was. */
@@ -141,8 +145,9 @@ export class RegisterScene extends Phaser.Scene {
     label(this, 8, top + 32, 'GIVEN', COLOURS.dim);
     this.givenText = label(this, L.W - 8, top + 32, '$0.00', COLOURS.white, 'right');
     this.messageText = label(this, Math.floor(L.W / 2), top + 43, CASH_PROMPT, COLOURS.dim, 'center');
+    label(this, Math.floor(L.W / 2), top + 53, 'TAP THE WINDOW TO CANCEL', COLOURS.dim, 'center');
 
-    const moneyY = top + 53;
+    const moneyY = top + 63;
     const actionsY = this.floor - BUTTONS.actionH;
     const cellH = Math.min(52, Math.floor((actionsY - moneyY - 2) / 2) - 2);
     const cellW = Math.floor((L.W - 8) / 4);
@@ -151,7 +156,11 @@ export class RegisterScene extends Phaser.Scene {
       const cy = moneyY + Math.floor(i / 4) * (cellH + 2) + Math.floor(cellH / 2);
       this.moneyPiece(cents, cx, cy, cellW, cellH);
     });
-    this.actionsRow(['UNDO', () => this.undo()], ['CLEAR', () => this.clearDesk()], ['GIVE', () => this.giveChange()]);
+    const actionW = Math.floor((L.W - 12) * 0.25);
+    button(this, 4, actionsY, actionW, BUTTONS.actionH, 'UNDO', () => this.undo());
+    button(this, 6 + actionW, actionsY, actionW, BUTTONS.actionH, 'CLEAR', () => this.clearDesk());
+    const giveX = 8 + actionW * 2;
+    button(this, giveX, actionsY, L.W - giveX - 4, BUTTONS.actionH, 'GIVE', () => this.giveChange(), COLOURS.accent, null);
   }
 
   /** A bill or coin you can tap, with its value printed on it. */
@@ -286,11 +295,6 @@ export class RegisterScene extends Phaser.Scene {
     button(this, x(1), y(3), w, h, '0', () => this.pressKey('0'), COLOURS.button, sfx.keypad);
     button(this, x(2), y(3), w, h, 'DEL', () => this.pressKey('DEL'), 0x8c6d28, sfx.keypad);
     button(this, x(3), y(0), okW, h * 4 + gap * 3, 'OK', () => this.pressKey('OK'), COLOURS.accent, null);
-
-    // Tapping anywhere outside the payment area backs out. The menu button stays reachable.
-    const outsideTop = L.hudH + 8;
-    this.add.rectangle(0, outsideTop, L.W, top - outsideTop, 0xffffff, 0).setOrigin(0).setDepth(-2)
-      .setInteractive().on('pointerup', () => this.back());
 
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       if (/^[0-9]$/.test(e.key)) {

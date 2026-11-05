@@ -5,7 +5,7 @@ import { CUSTOMER_LOOKS, SHELF_LABEL_H, columnX } from '../art/textures';
 import { sfx } from '../audio';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
 import { lightingAt } from '../logic/clock';
-import { buildRequest, chooseCash, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
+import { buildRequest, chooseCash, emptyShelfComment, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
 import { endDay } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { nextRowPrice } from '../logic/licences';
@@ -35,7 +35,7 @@ const SCENE_W = 479;
 const SCENE_H = 267;
 /** A short beat after the last item lands, so you can see the order complete. */
 const PAYMENT_DELAY_MS = 350;
-const EMPTY_HANDED_MS = 1900;
+const EMPTY_HANDED_MS = 2600;
 
 const tableItemX = (i: number) => 88 + i * 21;
 const tableY = () => L.counterTop + 21;
@@ -156,7 +156,8 @@ export class ShackScene extends Phaser.Scene {
     this.heldMoney = this.add.image(propX(), propY(), 'held_cash').setDepth(5.1).setVisible(false);
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
-    this.add.rectangle(0, 0, W, L.hudH, COLOURS.bg).setOrigin(0).setDepth(6);
+    // A little past the top edge, so rounding can't leave a sliver of the beach showing.
+    this.add.rectangle(0, -4, W, L.hudH + 4, COLOURS.bg).setOrigin(0).setDepth(6);
     const hudText = L.hudH - 11;
     this.add.image(11, L.hudH - 8, 'menu_icon').setDepth(7);
     this.dayText = label(this, 23, hudText, '').setDepth(7);
@@ -450,8 +451,12 @@ export class ShackScene extends Phaser.Scene {
       onComplete: () => {
         this.busy = false;
         this.showPayment(customer);
+        // With nothing at all on the shelves, they say so and move on.
+        if (customer.wants.length === 0) {
+          this.spoken = emptyShelfComment();
+          this.spokenColour = COLOURS.ink;
+        }
         this.renderBubble();
-        // With nothing at all on the shelves, they move on.
         if (customer.wants.length === 0) {
           this.time.delayedCall(EMPTY_HANDED_MS, () => {
             if (this.current === customer) this.dismiss();

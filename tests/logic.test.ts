@@ -4,7 +4,7 @@ import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/baske
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
 import { clockLabel, lightingAt } from '../src/logic/clock';
 import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
-import { buildRequest, IDLE_MAX_SECONDS, pickLook, shortenWhenIdle } from '../src/logic/customers';
+import { buildRequest, emptyShelfComment, IDLE_MAX_SECONDS, pickLook, shortenWhenIdle } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
@@ -516,5 +516,11 @@ describe('shelf labels', () => {
       expect(first.length).toBeLessThanOrEqual(charsPerShelf);
       expect(second.length + 3).toBeLessThanOrEqual(charsPerShelf);
     }
+  });
+});
+
+describe('empty shelves', () => {
+  it('gives the customer something to say, every time', () => {
+    for (const r of [0, 0.3, 0.6, 0.99]) expect(emptyShelfComment(() => r).length).toBeGreaterThan(0);
   });
 });

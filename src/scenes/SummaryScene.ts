@@ -4,7 +4,7 @@ import type { NextDayEvents } from '../logic/day';
 import { lockedProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, drawPaper, label, mainButton, secondaryButton } from '../ui';
+import { COLOURS, WIDTH, backdrop, drawPaper, label, mainButton } from '../ui';
 
 const PAPER_X = 14;
 const PAPER_W = WIDTH - PAPER_X * 2;
@@ -13,14 +13,11 @@ const INK_GOOD = 0x0b6b3a;
 const INK_BAD = 0xb3261e;
 
 export class SummaryScene extends Phaser.Scene {
-  private confirmingReset = false;
-
   constructor() {
     super('Summary');
   }
 
   create({ summary, starterBox }: NextDayEvents) {
-    this.confirmingReset = false;
     sfx.dayEnd();
     backdrop(this);
 
@@ -74,16 +71,6 @@ export class SummaryScene extends Phaser.Scene {
       if (starterBox) session.toast('SUPPLIER SENT A FREE BOX', 4000);
       this.toNextDay();
     }, sfx.click);
-
-    const reset = secondaryButton(this, top + paperH + 46, 'START OVER', () => {
-      if (!this.confirmingReset) {
-        this.confirmingReset = true;
-        reset.setLabel('TAP AGAIN TO CONFIRM');
-        return;
-      }
-      session.reset();
-      this.toNextDay();
-    });
   }
 
   private toNextDay() {

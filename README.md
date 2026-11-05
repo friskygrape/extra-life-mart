@@ -12,7 +12,7 @@ A pixel art shop game for phone browsers. Run a little beachfront convenience st
    - A receipt prints beside the customer, and the panel below shows your next step.
    - **Cash:** there are no pennies, so totals round to the nearest 5 cents. The panel shows the change due. Tap bills and coins to lay them on the counter, and tap any piece to take it back. Too little is refused. Too much goes through, and you lose the extra.
    - **Card:** a terminal comes up on the counter. Key in the exact total.
-   - To change the order during payment, press **Back** on cash, or tap outside the keypad on card.
+   - To change the order during payment, tap the window to back out.
 3. **Close:** the shop runs from 9 AM to 9 PM, and evening sets in after 6 PM. Check the day's sales, missed sales and profit, then start the next day. Progress saves automatically.
 
 ## Getting ahead
