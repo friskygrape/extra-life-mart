@@ -4,19 +4,20 @@ import { SHELF_CAPACITY, getProduct } from '../data/products';
 import { emptyShelf, stockShelf } from '../logic/inventory';
 import { unlockedProducts } from '../logic/licences';
 import { session } from '../session';
-import { BUTTONS, COLOURS, WIDTH, backdrop, button, closeButton, label, mainButton, pager, secondaryButton } from '../ui';
+import { BUTTONS, COLOURS, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton, secondaryButton } from '../ui';
 
 interface StockData {
   shelfId: string;
 }
 
-const PER_PAGE = 6;
+const LIST_ROWS = 6;
 const LIST_Y = 72;
 const ROW_H = 30;
 
 export class StockScene extends Phaser.Scene {
   private shelfId = '';
-  private page = 0;
+  private scroll = 0;
+  private list: ScrollList | null = null;
   private selected: string | null = null;
   private qty = 0;
   private content: { destroy(): void }[] = [];
@@ -27,7 +28,8 @@ export class StockScene extends Phaser.Scene {
 
   create(data: StockData) {
     this.shelfId = data.shelfId;
-    this.page = 0;
+    this.scroll = 0;
+    this.list = null;
     this.selected = null;
     this.qty = 0;
     this.content = [];
@@ -64,6 +66,9 @@ export class StockScene extends Phaser.Scene {
   }
 
   private render() {
+    if (this.list) this.scroll = this.list.scroll;
+    this.list?.destroy();
+    this.list = null;
     this.content.forEach((o) => o.destroy());
     this.content = [];
     const shelf = this.shelf();
@@ -94,26 +99,24 @@ export class StockScene extends Phaser.Scene {
 
     // What you actually have comes first, so there's less to page through.
     const products = unlockedProducts(session.state).sort((a, b) => Number(this.have(b.id) > 0) - Number(this.have(a.id) > 0));
-    const pages = Math.ceil(products.length / PER_PAGE);
-    this.page = Math.min(this.page, pages - 1);
-    if (pages > 1) pager(this, this.page, pages, (delta) => this.turn(delta)).forEach((o) => this.track(o));
-
-    products.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE).forEach((product, i) => {
-      const y = LIST_Y + i * ROW_H;
+    const list = new ScrollList(this, LIST_Y, LIST_ROWS * ROW_H, products.length * ROW_H, this.scroll);
+    this.list = list;
+    products.forEach((product, i) => {
+      const y = i * ROW_H;
       const usable = this.maxFor(product.id) > 0;
       const isSelected = this.selected === product.id;
       const alpha = usable ? 1 : 0.4;
-      const row = this.track(this.add.rectangle(4, y, WIDTH - 8, ROW_H - 2, isSelected ? COLOURS.accent : COLOURS.panel).setOrigin(0));
+      const row = list.add(this.add.rectangle(4, y, WIDTH - 8, ROW_H - 2, isSelected ? COLOURS.accent : COLOURS.panel).setOrigin(0));
       row.setAlpha(usable ? 1 : 0.5);
       if (isSelected) row.setStrokeStyle(1, COLOURS.white);
-      if (usable) row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(product.id));
-      this.track(this.add.image(16, y + 14, `item_${product.id}`).setAlpha(alpha));
-      this.track(label(this, 28, y + 4, product.name).setAlpha(alpha));
-      this.track(label(this, 28, y + 15, `HAVE ${this.have(product.id)}`, isSelected ? COLOURS.white : COLOURS.dim).setAlpha(alpha));
-      if (isSelected) this.track(label(this, WIDTH - 12, y + 11, '✓', COLOURS.white, 'right'));
+      if (usable) row.setInteractive({ useHandCursor: true }).on('pointerup', list.guard(() => this.select(product.id), null));
+      list.add(this.add.image(16, y + 14, `item_${product.id}`).setAlpha(alpha));
+      list.add(label(this, 28, y + 4, product.name).setAlpha(alpha));
+      list.add(label(this, 28, y + 15, `HAVE ${this.have(product.id)}`, isSelected ? COLOURS.white : COLOURS.dim).setAlpha(alpha));
+      if (isSelected) list.add(label(this, WIDTH - 12, y + 10, '\u2713', COLOURS.white, 'right'));
     });
 
-    const footerY = LIST_Y + PER_PAGE * ROW_H;
+    const footerY = LIST_Y + LIST_ROWS * ROW_H;
     const max = this.selected ? this.maxFor(this.selected) : 0;
     this.track(label(this, 6, footerY + 12, 'HOW MANY', this.selected ? COLOURS.white : COLOURS.dim));
     this.track(button(this, 134, footerY, BUTTONS.stepper, BUTTONS.stepper, '-', () => this.changeQty(-1))).setEnabled(this.qty > 1);
@@ -125,11 +128,6 @@ export class StockScene extends Phaser.Scene {
       this.scene.stop();
       this.scene.launch('Order');
     }));
-  }
-
-  private turn(delta: number) {
-    this.page += delta;
-    this.render();
   }
 
   private changeQty(delta: number) {
@@ -151,6 +149,8 @@ export class StockScene extends Phaser.Scene {
   }
 
   private close() {
+    this.list?.destroy();
+    this.list = null;
     session.modal = false;
     this.scene.stop();
   }

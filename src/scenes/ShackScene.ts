@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { getProduct } from '../data/products';
+import { getProduct, shelfLabelLines } from '../data/products';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
-import { CUSTOMER_LOOKS, columnX } from '../art/textures';
+import { CUSTOMER_LOOKS, SHELF_LABEL_H, columnX } from '../art/textures';
 import { isMuted, sfx, toggleMuted } from '../audio';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
 import { lightingAt } from '../logic/clock';
@@ -13,7 +13,7 @@ import { customerTender, formatCents, roundToNickel } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
 import { session } from '../session';
-import { BUTTONS, Button, COLOURS, button, label } from '../ui';
+import { BUTTONS, Button, COLOURS, button, drawPaper, label } from '../ui';
 
 const TABLE_CAPACITY = 4;
 const DELIVERY_SECONDS = 3;
@@ -81,10 +81,10 @@ export class ShackScene extends Phaser.Scene {
   private shutter!: Phaser.GameObjects.Image;
   private closedSign!: Phaser.GameObjects.BitmapText;
   private portrait!: Phaser.GameObjects.Image;
-  private bubble!: Phaser.GameObjects.Rectangle;
-  private bubbleTail!: Phaser.GameObjects.Triangle;
-  private speech!: Phaser.GameObjects.Rectangle;
-  private speechTail!: Phaser.GameObjects.Triangle;
+  private bubble!: Phaser.GameObjects.Graphics;
+  private bubbleTail!: Phaser.GameObjects.Image;
+  private speech!: Phaser.GameObjects.Graphics;
+  private speechTail!: Phaser.GameObjects.Image;
   private heldMoney!: Phaser.GameObjects.Image;
   private heldCard!: Phaser.GameObjects.Image;
   private bubbleLines: { destroy(): void }[] = [];
@@ -94,6 +94,7 @@ export class ShackScene extends Phaser.Scene {
   private rowArt: Phaser.GameObjects.GameObject[] = [];
   /** While paying, the receipt replaces the list: how many lines it has. */
   private receiptLines: number | null = null;
+  private receiptTop = 0;
   private table: TableItem[] = [];
   private queue: Waiting[] = [];
   private current: Customer | null = null;
@@ -132,6 +133,12 @@ export class ShackScene extends Phaser.Scene {
     this.add.image(0, 0, 'shop').setOrigin(0).setDepth(4);
     this.warmLight = this.add.rectangle(0, 0, W, L.H, 0xffa050, 0).setOrigin(0).setDepth(4.05);
 
+    // The closed sign is a shortcut for opening up.
+    this.add.rectangle(windowX, windowY, windowW, windowH, 0xffffff, 0).setOrigin(0).setDepth(3.6).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        if (session.phase === 'morning' && !session.modal) this.openShop();
+      });
+
     const standBottom = L.counterBottom - 6;
     this.add.image(2, standBottom, 'till').setOrigin(0, 1).setDepth(4.5);
     const computerX = W - 52;
@@ -142,10 +149,10 @@ export class ShackScene extends Phaser.Scene {
     this.add.rectangle(computerX, computerY, 50, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => this.openModal('Order'));
 
-    this.bubble = this.add.rectangle(0, 0, 10, 10, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
-    this.bubbleTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
-    this.speech = this.add.rectangle(0, 0, 10, 10, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
-    this.speechTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
+    this.bubble = this.add.graphics().setDepth(5).setVisible(false);
+    this.bubbleTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
+    this.speech = this.add.graphics().setDepth(5).setVisible(false);
+    this.speechTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
     label(this, windowX + Math.floor(windowW / 2), L.signY + 7, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
     this.heldMoney = this.add.image(propX(), propY(), 'held_cash').setDepth(5.1).setVisible(false);
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
@@ -163,7 +170,7 @@ export class ShackScene extends Phaser.Scene {
     });
 
     this.crate = this.add.image(crateX(), crateY(), 'crate').setDepth(7).setInteractive({ useHandCursor: true })
-      .on('pointerup', () => session.toast(`${this.stockTotal()} ITEMS IN YOUR STOCK`));
+      .on('pointerup', () => this.openModal('Inventory'));
     this.stockCount = label(this, crateX(), crateY() - 3, '', COLOURS.white, 'center').setDepth(8);
     this.hint = label(this, 28, L.stripTop + 2, '').setDepth(7);
     this.hint.setMaxWidth(W - 116);
@@ -208,7 +215,7 @@ export class ShackScene extends Phaser.Scene {
   // ---- Shelves and table --------------------------------------------------
 
   private refreshShelves() {
-    const iconRows = Math.max(2, Math.floor((L.rowH - 14) / 16));
+    const iconRows = Math.max(1, Math.floor((L.rowH - SHELF_LABEL_H - 4) / 16));
     for (const slot of SHELF_SLOTS) {
       this.slotArt.get(slot.id)?.forEach((o) => o.destroy());
       this.slotArt.delete(slot.id);
@@ -218,20 +225,21 @@ export class ShackScene extends Phaser.Scene {
       const x = slotLeft(slot);
       const y = slotTop(slot);
       const w = slotWidth(slot);
-      const labelY = y + L.rowH - 9;
+      const labelY = y + L.rowH - SHELF_LABEL_H;
       if (shelf.productId && shelf.qty > 0) {
         const shown = Math.min(shelf.qty, 3 * iconRows);
         const left = x + Math.floor((w - 48) / 2);
         for (let i = 0; i < shown; i++) {
           const ix = left + (i % 3) * 16;
-          const iy = labelY - 19 - Math.floor(i / 3) * 16;
+          const iy = labelY - 18 - Math.floor(i / 3) * 16;
           art.push(this.add.image(ix, iy, `item_${shelf.productId}`).setOrigin(0).setDepth(5 + 0.2 - i * 0.001));
         }
-        art.push(label(this, x + 3, labelY, getProduct(shelf.productId).short, COLOURS.ink).setDepth(6));
-        art.push(label(this, x + w - 3, labelY, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
+        const [first, second] = shelfLabelLines(getProduct(shelf.productId).name);
+        art.push(label(this, x + 3, labelY + 1, first, COLOURS.ink).setDepth(6));
+        if (second) art.push(label(this, x + 3, labelY + 9, second, COLOURS.ink).setDepth(6));
+        art.push(label(this, x + w - 3, labelY + 9, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
       } else {
-        art.push(label(this, x + Math.floor(w / 2), labelY, 'EMPTY', 0x8a7f6a, 'center').setDepth(6));
-        art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - 19) / 2), '+', COLOURS.white, 'center').setDepth(6).setAlpha(0.7));
+        art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - SHELF_LABEL_H - 7) / 2), '+', COLOURS.white, 'center').setDepth(6).setAlpha(0.7));
       }
       this.slotArt.set(slot.id, art);
     }
@@ -533,18 +541,19 @@ export class ShackScene extends Phaser.Scene {
       this.bubbleLines.push(t);
       return t;
     };
-    const place = (box: Phaser.GameObjects.Rectangle, tail: Phaser.GameObjects.Triangle, top: number, bottom: number) => {
-      box.setPosition(bubbleX(), top).setSize(bubbleW(), bottom - top).setVisible(true);
-      tail.setPosition(bubbleX() + 1, bottom - 8).setVisible(true);
+    const place = (box: Phaser.GameObjects.Graphics, tail: Phaser.GameObjects.Image, top: number, bottom: number) => {
+      drawPaper(box, bubbleX(), top, bubbleW(), bottom - top, false);
+      box.setVisible(true);
+      tail.setPosition(bubbleX() + 1, bottom - 2).setVisible(true);
     };
 
     // The list: finished lines become a solid green row with a check mark
-    let y = this.receiptLines === null ? bubbleY() + 3 : bubbleY() + receiptHeight(this.receiptLines) + 10;
+    let y = this.receiptLines === null ? bubbleY() + 3 : this.receiptTop + receiptHeight(this.receiptLines) + 10;
     if (hasList) {
       requestLines(customer.wants, session.table).forEach((line) => {
         const name = getProduct(line.productId).name;
         if (line.done) {
-          const row = this.add.rectangle(bubbleX() + 1, y - 1, bubbleW() - 2, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
+          const row = this.add.rectangle(bubbleX() + 2, y - 1, bubbleW() - 4, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
           this.bubbleLines.push(row);
           put(y, `\u2713 ${name}`, COLOURS.white);
         } else {
@@ -579,9 +588,13 @@ export class ShackScene extends Phaser.Scene {
     if (customer.tender?.total !== charged) customer.tender = { total: charged, amount: customerTender(charged) };
     this.setDeskClear(true);
     this.receiptLines = Math.min(items.length, 4);
+    // Moves up if needed, so the receipt and speech bubble stay clear of the things on the counter.
+    const speechH = customer.wished.length > 0 ? 34 : 14;
+    this.receiptTop = Math.max(L.windowY + 8, Math.min(bubbleY(), L.counterTop - 20 - speechH - 8 - receiptHeight(this.receiptLines)));
     this.renderBubble();
     this.openModal('Register', {
       items,
+      receiptTop: this.receiptTop,
       total: charged,
       paidByCash: customer.paidByCash,
       tendered: customer.paidByCash ? customer.tender.amount : 0,

@@ -4,13 +4,13 @@ import type { NextDayEvents } from '../logic/day';
 import { lockedProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, label, mainButton, secondaryButton } from '../ui';
+import { COLOURS, WIDTH, backdrop, drawPaper, label, mainButton, secondaryButton } from '../ui';
 
 const PAPER_X = 14;
 const PAPER_W = WIDTH - PAPER_X * 2;
 const INK_MUTED = 0x6d6352;
-const INK_GOOD = 0x1f7a4d;
-const INK_BAD = 0xb0352b;
+const INK_GOOD = 0x0b6b3a;
+const INK_BAD = 0xb3261e;
 
 export class SummaryScene extends Phaser.Scene {
   private confirmingReset = false;
@@ -31,10 +31,7 @@ export class SummaryScene extends Phaser.Scene {
     const paperH = 262;
 
     // The paper, with a torn edge along the bottom
-    this.add.rectangle(PAPER_X, top, PAPER_W, paperH, COLOURS.paper).setOrigin(0);
-    const edge = this.add.graphics();
-    edge.fillStyle(COLOURS.paper);
-    for (let x = 0; x + 6 <= PAPER_W; x += 6) edge.fillTriangle(PAPER_X + x, top + paperH, PAPER_X + x + 6, top + paperH, PAPER_X + x + 3, top + paperH + 4);
+    drawPaper(this.add.graphics(), PAPER_X, top, PAPER_W, paperH, true, COLOURS.ink);
 
     label(this, centre, top + 8, 'EXTRA LIFE MART', COLOURS.ink, 'center');
     label(this, centre, top + 20, `DAY ${summary.day} RECEIPT`, INK_MUTED, 'center');
@@ -51,14 +48,14 @@ export class SummaryScene extends Phaser.Scene {
     row(top + 54, 'MISSED SALES', String(summary.missedSales), summary.missedSales ? INK_BAD : COLOURS.ink);
     rule(top + 67);
     row(top + 75, 'SALES', formatCents(summary.revenue), INK_GOOD);
-    row(top + 88, 'STOCK BOUGHT', formatCents(-summary.orderSpend));
+    row(top + 88, 'STOCK BOUGHT', formatCents(-summary.orderSpend), summary.orderSpend ? INK_BAD : COLOURS.ink);
     row(top + 101, 'OVERPAID', formatCents(-summary.overpaid), summary.overpaid ? INK_BAD : COLOURS.ink);
     rule(top + 114);
     row(top + 122, 'PROFIT', formatCents(summary.profit), summary.profit >= 0 ? INK_GOOD : INK_BAD);
     if (summary.newBest) label(this, centre, top + 135, 'NEW BEST DAY!', INK_GOOD, 'center');
     rule(top + 148);
     const spent = summary.upgradeSpend > 0;
-    if (spent) row(top + 156, 'UPGRADES', formatCents(-summary.upgradeSpend));
+    if (spent) row(top + 156, 'UPGRADES', formatCents(-summary.upgradeSpend), INK_BAD);
     row(top + (spent ? 169 : 162), 'BALANCE', formatCents(summary.balance));
     rule(top + 182);
     const next = lockedProducts(session.state)[0];

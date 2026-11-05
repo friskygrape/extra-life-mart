@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY } from '../src/data/products';
+import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
 import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
 import { clockLabel, lightingAt } from '../src/logic/clock';
@@ -504,5 +504,17 @@ describe('the line', () => {
   });
   it('still picks someone if every character is taken', () => {
     expect(pickLook([0, 1], 2)).toBeLessThan(2);
+  });
+});
+
+describe('shelf labels', () => {
+  it('fit every full name, with room for the count on the second line', () => {
+    const charsPerShelf = 9; // 54 game pixels at 6 per character
+    for (const p of PRODUCTS) {
+      const [first, second] = shelfLabelLines(p.name);
+      expect(`${first} ${second}`.trim()).toBe(p.name);
+      expect(first.length).toBeLessThanOrEqual(charsPerShelf);
+      expect(second.length + 3).toBeLessThanOrEqual(charsPerShelf);
+    }
   });
 });

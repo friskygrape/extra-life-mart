@@ -33,6 +33,12 @@ export function getProduct(id: string): Product {
   return product;
 }
 
+/** A snack's full name split over the two lines of a shelf label. */
+export function shelfLabelLines(name: string): [string, string] {
+  const space = name.indexOf(' ');
+  return space < 0 ? [name, ''] : [name.slice(0, space), name.slice(space + 1)];
+}
+
 export const SHELF_CAPACITY = 12;
 /** Stock is ordered in boxes that fill exactly one shelf. */
 export const BOX_SIZE = SHELF_CAPACITY;

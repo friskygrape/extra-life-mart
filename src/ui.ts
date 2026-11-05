@@ -103,8 +103,6 @@ export const BUTTONS = {
   compactH: 22,
   closeW: 46,
   removeW: 58,
-  pageW: 28,
-  pageH: 22,
   tabH: 24,
   stripW: 78,
   stripH: 26,
@@ -127,15 +125,128 @@ export function closeButton(scene: Phaser.Scene, onTap: () => void) {
   return button(scene, WIDTH - BUTTONS.closeW - 4, 3, BUTTONS.closeW, BUTTONS.compactH, 'CLOSE', onTap);
 }
 
-/** The shared previous/next arrows for long lists, with the page count between them. */
-export function pager(scene: Phaser.Scene, page: number, pages: number, onTurn: (delta: number) => void) {
-  const y = 3;
-  const prev = button(scene, 84, y, BUTTONS.pageW, BUTTONS.pageH, '<', () => onTurn(-1));
-  const next = button(scene, 134, y, BUTTONS.pageW, BUTTONS.pageH, '>', () => onTurn(1));
-  prev.setEnabled(page > 0);
-  next.setEnabled(page < pages - 1);
-  const count = label(scene, 123, y + 8, `${page + 1}/${pages}`, COLOURS.dim, 'center');
-  return [prev, next, count];
+/**
+ * A list you drag or wheel through. Rows are added at positions relative to its top.
+ * Anything scrolled out of view is hidden and can't be tapped.
+ */
+export class ScrollList {
+  readonly container: Phaser.GameObjects.Container;
+  private readonly maskShape: Phaser.GameObjects.Graphics;
+  private readonly thumb: Phaser.GameObjects.Rectangle | null = null;
+  private readonly maxScroll: number;
+  private scrollY = 0;
+  private dragging = false;
+  private moved = false;
+  private lastY = 0;
+  private totalDrag = 0;
+  private readonly onDown = (p: Phaser.Input.Pointer) => {
+    this.moved = false;
+    this.totalDrag = 0;
+    this.dragging = this.inView(p.worldY);
+    this.lastY = p.worldY;
+  };
+  private readonly onMove = (p: Phaser.Input.Pointer) => {
+    if (!this.dragging || !p.isDown) return;
+    const dy = p.worldY - this.lastY;
+    this.lastY = p.worldY;
+    this.totalDrag += Math.abs(dy);
+    if (this.totalDrag > 4) this.moved = true;
+    this.setScroll(this.scrollY - dy);
+  };
+  private readonly onUp = () => {
+    this.dragging = false;
+  };
+  private readonly onWheel = (_p: unknown, _o: unknown, _dx: number, dy: number) => {
+    this.setScroll(this.scrollY + dy * 0.25);
+  };
+
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly top: number,
+    private readonly height: number,
+    contentHeight: number,
+    startAt = 0,
+  ) {
+    this.container = scene.add.container(0, top);
+    this.maxScroll = Math.max(0, contentHeight - height);
+    const offsetX = Math.floor((L.W - WIDTH) / 2);
+    this.maskShape = scene.make.graphics({});
+    this.maskShape.fillStyle(0xffffff).fillRect(-offsetX, top, L.W, height);
+    this.container.setMask(this.maskShape.createGeometryMask());
+    if (this.maxScroll > 0) {
+      const thumbH = Math.max(16, Math.round((height * height) / contentHeight));
+      this.thumb = scene.add.rectangle(WIDTH - 2, top, 2, thumbH, COLOURS.dim).setOrigin(0);
+    }
+    scene.input.on('pointerdown', this.onDown);
+    scene.input.on('pointermove', this.onMove);
+    scene.input.on('pointerup', this.onUp);
+    scene.input.on('wheel', this.onWheel);
+    this.setScroll(startAt);
+  }
+
+  get scroll(): number {
+    return this.scrollY;
+  }
+
+  private inView(y: number): boolean {
+    return y >= this.top && y < this.top + this.height;
+  }
+
+  private setScroll(value: number) {
+    this.scrollY = Math.round(Math.max(0, Math.min(this.maxScroll, value)));
+    this.container.y = this.top - this.scrollY;
+    if (this.thumb) {
+      const travel = this.height - this.thumb.height;
+      this.thumb.y = this.top + (this.maxScroll ? (this.scrollY / this.maxScroll) * travel : 0);
+    }
+  }
+
+  add<T extends Phaser.GameObjects.GameObject>(obj: T): T {
+    this.container.add(obj);
+    return obj;
+  }
+
+  addButton(b: Button): Button {
+    this.container.add([b.rect, b.text]);
+    return b;
+  }
+
+  /** Wraps a tap so it only counts if it wasn't a drag, and landed on a visible row. */
+  guard(onTap: () => void, sound: (() => void) | null = sfx.click): () => void {
+    return () => {
+      if (this.moved || !this.inView(this.scene.input.activePointer.worldY)) return;
+      sound?.();
+      onTap();
+    };
+  }
+
+  destroy() {
+    this.scene.input.off('pointerdown', this.onDown);
+    this.scene.input.off('pointermove', this.onMove);
+    this.scene.input.off('pointerup', this.onUp);
+    this.scene.input.off('wheel', this.onWheel);
+    this.container.clearMask(true);
+    this.container.destroy();
+    this.maskShape.destroy();
+    this.thumb?.destroy();
+  }
+}
+
+/** Paper with a solid ink outline and, optionally, a torn bottom edge. */
+export function drawPaper(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, torn: boolean, ink: number = COLOURS.ink) {
+  g.clear();
+  g.fillStyle(ink).fillRect(x, y, w, h);
+  g.fillStyle(COLOURS.paper).fillRect(x + 1, y + 1, w - 2, h - 2);
+  if (!torn) return;
+  // Pixel zig-zag, closed off with the outline so no edge is missing
+  g.fillStyle(COLOURS.paper).fillRect(x + 1, y + h - 1, w - 2, 1);
+  for (let tx = 0; tx < w; tx += 1) {
+    const peak = tx % 4 < 2;
+    g.fillStyle(peak ? COLOURS.paper : ink).fillRect(x + tx, y + h, 1, 1);
+    g.fillStyle(peak ? ink : 0x000000, peak ? 1 : 0).fillRect(x + tx, y + h + 1, 1, 1);
+  }
+  g.fillStyle(ink).fillRect(x, y + h - 1, 1, 2);
+  g.fillStyle(ink).fillRect(x + w - 1, y + h - 1, 1, 2);
 }
 
 /**

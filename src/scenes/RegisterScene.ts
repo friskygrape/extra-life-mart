@@ -1,21 +1,24 @@
 import Phaser from 'phaser';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
-import { L, bubbleW, bubbleX, bubbleY, receiptHeight } from '../layout';
+import { L, bubbleW, bubbleX, receiptHeight } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
 import { session } from '../session';
-import { BUTTONS, COLOURS, button, label } from '../ui';
+import { BUTTONS, COLOURS, button, drawPaper, label } from '../ui';
 
 interface RegisterData {
   items: string[];
   total: number;
   paidByCash: boolean;
   tendered: number;
+  receiptTop: number;
   onDone: () => void;
   onBack: () => void;
 }
 
+const CASH_PROMPT = 'PROVIDE CHANGE TO THE CUSTOMER';
+const SUCCESS_INK = 0x0b6b3a;
 const MAX_RECEIPT_LINES = 4;
 const PRINT_LINE_MS = 70;
 const denominationLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}C`);
@@ -86,52 +89,55 @@ export class RegisterScene extends Phaser.Scene {
   /** Prints line by line beside the customer, in the same spot the item list was. */
   private printReceipt(items: string[], cash: boolean) {
     const x = bubbleX();
-    const y = bubbleY();
+    const y = this.info.receiptTop;
     const w = bubbleW();
     const lines = items.slice(0, MAX_RECEIPT_LINES);
     const height = receiptHeight(lines.length);
-    const paper = this.add.rectangle(x, y, w, 4, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink);
-    const grow = (rows: number) => paper.setSize(w, Math.min(height, 4 + rows * 9));
+    const paper = this.add.graphics();
+    drawPaper(paper, x, y, w, 5, false);
     lines.forEach((id, i) => {
       this.time.delayedCall(i * PRINT_LINE_MS, () => {
         const p = getProduct(id);
+        const price = formatCents(p.retail);
+        const fits = (p.name.length + price.length + 1) * 6 <= w - 6;
         sfx.keypad();
-        grow(i + 1);
-        label(this, x + 3, y + 3 + i * 9, p.short, COLOURS.ink);
-        label(this, x + w - 3, y + 3 + i * 9, formatCents(p.retail), COLOURS.ink, 'right');
+        drawPaper(paper, x, y, w, 5 + (i + 1) * 9, false);
+        label(this, x + 3, y + 3 + i * 9, fits ? p.name : p.short, COLOURS.ink);
+        label(this, x + w - 3, y + 3 + i * 9, price, COLOURS.ink, 'right');
       });
     });
     this.time.delayedCall(lines.length * PRINT_LINE_MS, () => {
-      paper.setSize(w, height);
+      drawPaper(paper, x, y, w, height, true);
       const ruleY = y + 3 + lines.length * 9;
       this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
       label(this, x + 3, ruleY + 3, cash ? 'CASH TOTAL' : 'TOTAL', COLOURS.ink);
       label(this, x + w - 3, ruleY + 3, formatCents(this.total), COLOURS.ink, 'right');
-      // Torn along the bottom
-      const edge = this.add.graphics();
-      edge.fillStyle(COLOURS.paper);
-      for (let tx = 0; tx + 6 <= w; tx += 6) edge.fillTriangle(x + tx, y + height, x + tx + 6, y + height, x + tx + 3, y + height + 3);
     });
   }
 
   /** The one number that matters right now, large and at the top of the panel. */
-  private headline(name: string, value: string) {
-    this.add.rectangle(4, this.top + 3, L.W - 8, 25, COLOURS.panelLight).setOrigin(0);
-    label(this, 8, this.top + 12, name, COLOURS.gold);
-    label(this, L.W - 8, this.top + 7, value, COLOURS.gold, 'right').setScale(2);
+  private headline(y: number, name: string, value: string) {
+    this.add.rectangle(4, y, L.W - 8, 25, COLOURS.panelLight).setOrigin(0);
+    label(this, 8, y + 9, name, COLOURS.gold);
+    label(this, L.W - 8, y + 4, value, COLOURS.gold, 'right').setScale(2);
   }
 
   // ---- Cash ---------------------------------------------------------------
 
   private buildCash() {
     const top = this.top;
-    this.headline('CHANGE DUE', formatCents(this.tendered - this.total));
-    label(this, 8, top + 33, `PAID ${formatCents(this.tendered)}`, COLOURS.dim);
-    label(this, L.W - 44, top + 33, 'GIVEN', COLOURS.dim, 'right');
-    this.givenText = label(this, L.W - 8, top + 33, '$0.00', COLOURS.white, 'right');
-    this.messageText = label(this, Math.floor(L.W / 2), top + 45, 'TAP MONEY TO GIVE IT', COLOURS.dim, 'center');
+    const smallRow = (y: number, name: string, value: string) => {
+      label(this, 8, y, name, COLOURS.dim);
+      label(this, L.W - 8, y, value, COLOURS.dim, 'right');
+    };
+    smallRow(top + 3, 'CASH TOTAL', formatCents(this.total));
+    smallRow(top + 13, 'AMOUNT PAID', formatCents(this.tendered));
+    this.headline(top + 23, 'CHANGE DUE', formatCents(this.tendered - this.total));
+    label(this, 8, top + 52, 'GIVEN', COLOURS.dim);
+    this.givenText = label(this, L.W - 8, top + 52, '$0.00', COLOURS.white, 'right');
+    this.messageText = label(this, Math.floor(L.W / 2), top + 63, CASH_PROMPT, COLOURS.dim, 'center');
 
-    const moneyY = top + 55;
+    const moneyY = top + 73;
     const actionsY = this.floor - BUTTONS.actionH;
     const cellH = Math.min(46, Math.floor((actionsY - moneyY - 2) / 2) - 2);
     const cellW = Math.floor((L.W - 8) / 4);
@@ -201,7 +207,7 @@ export class RegisterScene extends Phaser.Scene {
 
   /** Lays pieces out in two rows on the counter, fanning them closer together when there are many. */
   private refreshDesk() {
-    this.messageText.setText('');
+    this.messageText.setTint(COLOURS.dim).setText(CASH_PROMPT);
     const due = this.tendered - this.total;
     const given = this.given();
     this.givenText.setText(formatCents(given));
@@ -248,8 +254,8 @@ export class RegisterScene extends Phaser.Scene {
     const extra = result.status === 'over' ? result.extra : 0;
     completeSale(session.state, this.total, extra);
     sfx.sale();
-    if (extra > 0) this.finish(`OOPS! ${formatCents(extra)} TOO MUCH`, COLOURS.gold);
-    else this.finish('EXACT CHANGE. THANKS!', COLOURS.green);
+    if (extra > 0) this.finish(`OOPS! THAT'S ${formatCents(extra)} TOO MUCH`, 0x9a5b00);
+    else this.finish('PERFECT. THANKS!', SUCCESS_INK);
   }
 
   // ---- Card ---------------------------------------------------------------
@@ -257,8 +263,8 @@ export class RegisterScene extends Phaser.Scene {
   private buildCard() {
     const top = this.top;
     this.buildTerminal();
-    this.headline('ENTER ON TERMINAL', formatCents(this.total));
-    this.messageText = label(this, Math.floor(L.W / 2), top + 33, 'KEY IN THE AMOUNT ABOVE', COLOURS.dim, 'center');
+    this.headline(top + 3, 'AMOUNT DUE', formatCents(this.total));
+    this.messageText = label(this, Math.floor(L.W / 2), top + 33, 'KEY IT INTO THE TERMINAL', COLOURS.dim, 'center');
 
     const gridY = top + 44;
     const gap = 2;
@@ -312,7 +318,7 @@ export class RegisterScene extends Phaser.Scene {
       if (!checkCard(this.total, this.entered)) return this.reject('WRONG AMOUNT');
       completeSale(session.state, this.total, 0);
       sfx.approved();
-      this.finish('APPROVED!', COLOURS.green);
+      this.finish('APPROVED. THANKS!', SUCCESS_INK);
       return;
     }
     this.messageText.setText('');
@@ -344,8 +350,10 @@ export class RegisterScene extends Phaser.Scene {
 
   private finish(text: string, color: number) {
     this.finished = true;
-    this.messageText.setTint(color).setText(text);
-    this.time.delayedCall(this.terminal ? 650 : 900, () => {
+    // The customer says it, so it appears beside them rather than down by the buttons.
+    this.messageText.setText('');
+    session.events.emit('say', text, color);
+    this.time.delayedCall(this.terminal ? 800 : 1000, () => {
       this.removeTerminal(() => {
         session.sale = null;
         session.modal = false;

@@ -1,22 +1,23 @@
 import Phaser from 'phaser';
 import { sfx } from '../audio';
-import { BOX_SIZE, type Product } from '../data/products';
+import { BOX_SIZE, PRODUCTS, type Product } from '../data/products';
 import { SHELF_ROW_PRICES } from '../data/shelves';
-import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, unlockedProducts } from '../logic/licences';
+import { buyLicence, buyShelfRow, nextRowPrice, unlockedProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
 import { cartCost, placeOrder, type Cart } from '../logic/orders';
 import { session } from '../session';
-import { BUTTONS, COLOURS, WIDTH, backdrop, button, closeButton, label, mainButton, pager } from '../ui';
+import { BUTTONS, COLOURS, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton } from '../ui';
 
 export type OrderTab = 'snacks' | 'licences' | 'shelves';
 
 const ROW_H = 38;
 const LIST_Y = 54;
-const PER_PAGE = 6;
+const LIST_H = 232;
 
 export class OrderScene extends Phaser.Scene {
   private tab: OrderTab = 'snacks';
-  private page = 0;
+  private scroll = 0;
+  private list: ScrollList | null = null;
   private cart: Cart = {};
   private content: { destroy(): void }[] = [];
   private notice = '';
@@ -27,7 +28,8 @@ export class OrderScene extends Phaser.Scene {
 
   create(data?: { tab?: OrderTab }) {
     this.tab = data?.tab ?? 'snacks';
-    this.page = 0;
+    this.scroll = 0;
+    this.list = null;
     this.cart = {};
     this.content = [];
     this.notice = '';
@@ -42,6 +44,9 @@ export class OrderScene extends Phaser.Scene {
   }
 
   private render() {
+    if (this.list) this.scroll = this.list.scroll;
+    this.list?.destroy();
+    this.list = null;
     this.content.forEach((o) => o.destroy());
     this.content = [];
     const { state } = session;
@@ -53,61 +58,59 @@ export class OrderScene extends Phaser.Scene {
     const tab = (x: number, w: number, id: OrderTab, text: string) =>
       this.track(button(this, x, 27, w, BUTTONS.tabH, text, () => {
         this.tab = id;
-        this.page = 0;
+        if (this.list) this.list.destroy();
+        this.list = null;
+        this.scroll = 0;
         this.render();
       }, this.tab === id ? COLOURS.panelLight : COLOURS.panel));
     tab(4, 62, 'snacks', 'SNACKS');
     tab(68, 72, 'licences', 'LICENCES');
     tab(142, 70, 'shelves', 'SHELVES');
 
-    if (this.tab === 'snacks') this.renderList(unlockedProducts(state), (p, y) => this.productRow(p, y));
+    if (this.tab === 'snacks') this.renderList(unlockedProducts(state), (p, y, list) => this.productRow(p, y, list));
     else if (this.tab === 'licences') this.renderLicences();
     else this.renderShelves();
     this.renderFooter();
   }
 
-  private renderList(products: Product[], row: (p: Product, y: number) => void) {
-    const pages = Math.max(1, Math.ceil(products.length / PER_PAGE));
-    this.page = Math.min(this.page, pages - 1);
-    if (pages > 1) pager(this, this.page, pages, (delta) => this.turn(delta)).forEach((o) => this.track(o));
-    products.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE).forEach((p, i) => row(p, LIST_Y + i * ROW_H));
+  private renderList(products: Product[], row: (p: Product, y: number, list: ScrollList) => void) {
+    const list = new ScrollList(this, LIST_Y, LIST_H, products.length * ROW_H, this.scroll);
+    this.list = list;
+    products.forEach((p, i) => row(p, i * ROW_H, list));
   }
 
-  private turn(delta: number) {
-    this.page += delta;
-    this.render();
-  }
-
-  private productRow(product: Product, y: number) {
+  private productRow(product: Product, y: number, list: ScrollList) {
     const boxes = (this.cart[product.id] ?? 0) / BOX_SIZE;
     const have = session.state.stockroom[product.id] ?? 0;
-    this.track(this.add.image(12, y + 17, `item_${product.id}`));
-    this.track(label(this, 24, y + 2, product.name));
-    this.track(label(this, 24, y + 12, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
-    this.track(label(this, 24, y + 22, `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
-    this.track(button(this, 134, y + 2, BUTTONS.stepper, BUTTONS.stepper, '-', () => this.change(product.id, -BOX_SIZE))).setEnabled(boxes > 0);
-    this.track(label(this, 172, y + 14, String(boxes), boxes ? COLOURS.gold : COLOURS.dim, 'center'));
-    this.track(button(this, 180, y + 2, BUTTONS.stepper, BUTTONS.stepper, '+', () => this.change(product.id, BOX_SIZE)));
+    list.add(this.add.image(12, y + 17, `item_${product.id}`));
+    list.add(label(this, 24, y + 2, product.name));
+    list.add(label(this, 24, y + 12, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
+    list.add(label(this, 24, y + 22, `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
+    list.addButton(button(this, 132, y + 2, BUTTONS.stepper, BUTTONS.stepper, '-', list.guard(() => this.change(product.id, -BOX_SIZE)), COLOURS.button, null)).setEnabled(boxes > 0);
+    list.add(label(this, 170, y + 14, String(boxes), boxes ? COLOURS.gold : COLOURS.dim, 'center'));
+    list.addButton(button(this, 178, y + 2, BUTTONS.stepper, BUTTONS.stepper, '+', list.guard(() => this.change(product.id, BOX_SIZE)), COLOURS.button, null));
   }
 
+  /** Every licence in the game stays on the list, so you can always see what's ahead. */
   private renderLicences() {
-    const locked = lockedProducts(session.state);
-    if (locked.length === 0) {
-      this.track(label(this, WIDTH / 2, 120, 'EVERYTHING UNLOCKED!', COLOURS.green, 'center'));
-      return;
-    }
-    this.renderList(locked, (product, y) => {
+    const { state } = session;
+    this.renderList(PRODUCTS.filter((p) => p.licence), (product, y, list) => {
       const price = product.licence!;
-      this.track(this.add.image(12, y + 17, `item_${product.id}`));
-      this.track(label(this, 24, y + 6, product.name));
-      this.track(label(this, 24, y + 18, `+${formatCents(product.retail - product.wholesale)} A SALE`, COLOURS.green));
-      this.track(button(this, WIDTH - BUTTONS.rowW - 4, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), () => {
-        if (!buyLicence(session.state, product.id)) return;
+      const owned = state.unlocked.includes(product.id);
+      list.add(this.add.image(12, y + 17, `item_${product.id}`));
+      list.add(label(this, 24, y + 6, product.name));
+      list.add(label(this, 24, y + 18, `+${formatCents(product.retail - product.wholesale)} A SALE`, COLOURS.green));
+      if (owned) {
+        list.add(label(this, WIDTH - 6 - BUTTONS.rowW / 2, y + 14, 'OWNED', COLOURS.dim, 'center'));
+        return;
+      }
+      list.addButton(button(this, WIDTH - BUTTONS.rowW - 6, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), list.guard(() => {
+        if (!buyLicence(state, product.id)) return;
         sfx.unlock();
         this.notice = `${product.short} UNLOCKED!`;
         if (session.phase === 'morning') session.save();
         this.render();
-      }, COLOURS.button, null)).setEnabled(price <= session.state.balance);
+      }, null), COLOURS.button, null)).setEnabled(price <= state.balance);
     });
   }
 
@@ -164,6 +167,8 @@ export class OrderScene extends Phaser.Scene {
   }
 
   private close() {
+    this.list?.destroy();
+    this.list = null;
     session.modal = false;
     this.scene.stop();
   }

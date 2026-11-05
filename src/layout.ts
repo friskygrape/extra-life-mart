@@ -101,7 +101,8 @@ export function setLayout(layout: Layout): void {
 // Shared spots around the customer, used by the shop and the payment screen.
 export const portraitX = () => L.windowX + 43;
 export const bubbleX = () => portraitX() + 27;
-export const bubbleY = () => L.windowY + 8;
+/** Level with the customer's face, whatever the window's height. */
+export const bubbleY = () => Math.max(L.windowY + 8, L.counterTop - 88);
 export const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
 
 /** Height of a printed receipt with this many item lines. */

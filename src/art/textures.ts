@@ -53,15 +53,19 @@ function disc(c: Ctx, color: string, cx: number, cy: number, r: number) {
 
 // ---- The shop -------------------------------------------------------------
 
+/** Height of the two-line label along the bottom of each shelf. */
+export const SHELF_LABEL_H = 18;
+
 function drawShelfCubby(c: Ctx, rng: () => number, x: number, y: number, w: number, h: number) {
+  const inner = h - SHELF_LABEL_H - 2;
   rect(c, '#b98a58', x, y, w, h);
   rect(c, '#dcb483', x, y, w, 1);
-  rect(c, '#8a6240', x + 1, y + 1, w - 2, h - 12);
+  rect(c, '#8a6240', x + 1, y + 1, w - 2, inner - 1);
   rect(c, '#6f4d31', x + 1, y + 1, w - 2, 4);
-  for (let py = y + 9; py < y + h - 11; py += 8) rect(c, '#7d5838', x + 1, py, w - 2, 1);
-  speckle(c, rng, x + 1, y + 5, w - 2, h - 16, ['#7d5838', '#97703f'], 0.04);
-  rect(c, '#e3bf8e', x, y + h - 11, w, 2);
-  rect(c, '#fbf1d8', x + 1, y + h - 9, w - 2, 8);
+  for (let py = y + 9; py < y + inner; py += 8) rect(c, '#7d5838', x + 1, py, w - 2, 1);
+  speckle(c, rng, x + 1, y + 5, w - 2, Math.max(1, inner - 5), ['#7d5838', '#97703f'], 0.04);
+  rect(c, '#e3bf8e', x, y + inner, w, 2);
+  rect(c, '#fbf1d8', x + 1, y + h - SHELF_LABEL_H, w - 2, SHELF_LABEL_H - 1);
 }
 
 /** Left edge of a shelf column, so four columns always span the full width. */
@@ -467,6 +471,18 @@ function drawCard(scene: Phaser.Scene) {
   });
 }
 
+function drawTail(scene: Phaser.Scene) {
+  // Points at the speaker. Its right column overlaps the bubble's edge, joining the two outlines.
+  canvasTexture(scene, 'bubble_tail', 8, 8, (c) => {
+    for (let y = 0; y < 8; y++) {
+      const left = 7 - y;
+      rect(c, '#fbf1d8', left, y, 8 - left, 1);
+      rect(c, '#2c2a33', left, y, 1, 1);
+    }
+    rect(c, '#2c2a33', 0, 7, 8, 1);
+  });
+}
+
 function drawProps(scene: Phaser.Scene) {
   canvasTexture(scene, 'box_closed', 28, 24, (c) => {
     rect(c, '#14100e', 0, 2, 28, 22);
@@ -526,5 +542,6 @@ export function createTextures(scene: Phaser.Scene): void {
   drawMoney(scene);
   drawProps(scene);
   drawCard(scene);
+  drawTail(scene);
   drawProducts(scene);
 }
