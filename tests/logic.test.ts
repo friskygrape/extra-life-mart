@@ -6,7 +6,7 @@ import { buildRequest } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
-import { customerTender, formatCents } from '../src/logic/money';
+import { customerTender, DENOMINATIONS, formatCents, roundToNickel } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder } from '../src/logic/orders';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
 import { newGame, type GameState } from '../src/logic/state';
@@ -39,6 +39,37 @@ describe('money', () => {
   it('customers always tender more than the total', () => {
     for (const total of [1, 99, 100, 129, 500, 1000, 2000, 4276, 10000, 15996]) {
       for (const r of [0, 0.5, 0.99]) expect(customerTender(total, () => r)).toBeGreaterThan(total);
+    }
+  });
+});
+
+describe('no pennies', () => {
+  it('rounds cash to the nearest 5 cents', () => {
+    expect(roundToNickel(129)).toBe(130);
+    expect(roundToNickel(149)).toBe(150);
+    expect(roundToNickel(151)).toBe(150);
+    expect(roundToNickel(152)).toBe(150);
+    expect(roundToNickel(153)).toBe(155);
+  });
+  it('leaves amounts already on 5 cents alone, including whole dollars', () => {
+    expect(roundToNickel(155)).toBe(155);
+    expect(roundToNickel(200)).toBe(200);
+    expect(roundToNickel(198)).toBe(200);
+  });
+  it('has a 50 cent coin and no penny', () => {
+    expect(DENOMINATIONS).toContain(50);
+    expect(DENOMINATIONS).not.toContain(1);
+  });
+  it('change on any cash sale can be made exactly with the money available', () => {
+    for (let cents = 100; cents <= 3000; cents += 7) {
+      const total = roundToNickel(cents);
+      for (const r of [0, 0.5, 0.99]) {
+        const tendered = customerTender(total, () => r);
+        expect(tendered).toBeGreaterThan(total);
+        let left = tendered - total;
+        for (const d of DENOMINATIONS) left -= Math.floor(left / d) * d;
+        expect(left).toBe(0);
+      }
     }
   });
 });
@@ -209,8 +240,8 @@ describe('fetching items', () => {
   });
   it('groups the request and marks finished lines', () => {
     expect(requestLines(['chips', 'chips', 'soda'], ['chips', 'soda'])).toEqual([
-      { productId: 'chips', qty: 2, done: false },
-      { productId: 'soda', qty: 1, done: true },
+      { productId: 'chips', remaining: 1, done: false },
+      { productId: 'soda', remaining: 0, done: true },
     ]);
   });
 });

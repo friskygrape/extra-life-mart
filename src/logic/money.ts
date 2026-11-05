@@ -1,5 +1,10 @@
 /** Bills and coins available in the change tray, in cents, largest first. */
-export const DENOMINATIONS = [2000, 1000, 500, 100, 25, 10, 5, 1] as const;
+export const DENOMINATIONS = [2000, 1000, 500, 100, 50, 25, 10, 5] as const;
+
+/** There are no pennies, so cash totals round to the nearest 5 cents. Card stays exact. */
+export function roundToNickel(cents: number): number {
+  return Math.round(cents / 5) * 5;
+}
 
 export function formatCents(cents: number): string {
   const sign = cents < 0 ? '-' : '';

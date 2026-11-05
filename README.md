@@ -7,9 +7,9 @@ A pixel art shop game for phone browsers. Run a little beachfront convenience st
 ## How to play
 
 1. **Morning:** tap an empty shelf to stock it. Use the computer on the counter to order more snacks, which come in boxes of 10. A delivery box lands on the counter, and tapping it unpacks everything into your stock crate. You can't open until something is on a shelf.
-2. **Open:** customers come to your window one at a time, say what they want, and say whether they're paying cash or card. They'll wait as long as it takes.
+2. **Open:** customers come to your window one at a time, say what they want, and hold out cash or a card so you can see how they'll pay. They'll wait as long as it takes.
    - Tap a shelf to move an item onto the counter, or tap an item on the counter to put it back. Once you have everything, payment starts on its own.
-   - **Cash:** the register shows the change due. Tap bills and coins to count it out. Too little is refused. Too much goes through, and you lose the extra.
+   - **Cash:** there are no pennies, so totals round to the nearest 5 cents. The register shows the change due. Tap bills and coins to lay them on the counter, and tap any piece to take it back. Too little is refused. Too much goes through, and you lose the extra.
    - **Card:** key the exact total into the terminal.
    - Press **Back** during payment to change the order first.
 3. **Close:** check the day's sales, missed sales and profit, then start the next day. Progress saves automatically.
@@ -35,4 +35,4 @@ npm run build        # production build in dist/
 
 ## How it's built
 
-Phaser 3, TypeScript and Vite, deployed to GitHub Pages by GitHub Actions. Customer portraits are in `public/customers/`. Everything else is drawn in code (`src/art/`), including the pixel font, and the sound effects are synthesised at runtime (`src/audio.ts`). Game rules live in `src/logic/` with no Phaser dependency, so they can be unit tested. All of the game's art and content is original.
+Phaser 3, TypeScript and Vite, deployed to GitHub Pages by GitHub Actions. Customer portraits and the beach scene are in `public/`. Everything else is drawn in code (`src/art/`), including the pixel font, and the sound effects are synthesised at runtime (`src/audio.ts`). Game rules live in `src/logic/` with no Phaser dependency, so they can be unit tested. All of the game's art and content is original.

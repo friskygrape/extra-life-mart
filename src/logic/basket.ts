@@ -16,12 +16,16 @@ export function isOrderComplete(wants: string[], table: string[]): boolean {
 
 export interface RequestLine {
   productId: string;
-  qty: number;
+  /** How many are still needed. Counts down as you add items. */
+  remaining: number;
   done: boolean;
 }
 
-/** Each requested product once, with how many are wanted and whether enough are on the table. */
+/** Each requested product once, with how many are still needed on the table. */
 export function requestLines(wants: string[], table: string[]): RequestLine[] {
   const have = tally(table);
-  return [...tally(wants)].map(([productId, qty]) => ({ productId, qty, done: (have.get(productId) ?? 0) >= qty }));
+  return [...tally(wants)].map(([productId, qty]) => {
+    const remaining = Math.max(0, qty - (have.get(productId) ?? 0));
+    return { productId, remaining, done: remaining === 0 };
+  });
 }

@@ -8,7 +8,7 @@ import { buildRequest, chooseCash, nextSpawnDelay } from '../logic/customers';
 import { endDay } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { nextRowPrice } from '../logic/licences';
-import { customerTender, formatCents } from '../logic/money';
+import { customerTender, formatCents, roundToNickel } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { session } from '../session';
 import { Button, COLOURS, WIDTH, button, label } from '../ui';
@@ -25,11 +25,14 @@ const DELIVERY_SECONDS = 3;
 const MAX_FLYING_ITEMS = 14;
 const MAX_WAITING = 4;
 const COMPLAINT = 0xb0352b;
-const PORTRAIT_X = 70;
-const PORTRAIT_OFFSCREEN = 80;
-const BUBBLE_X = 103;
-const BUBBLE_Y = 32;
-const BUBBLE_W = 91;
+const PORTRAIT_X = 80;
+const PORTRAIT_OFFSCREEN = 90;
+const HAND_X = 116;
+const HAND_Y = 146;
+const BUBBLE_X = 107;
+const BUBBLE_Y = 50;
+const BUBBLE_W = 106;
+const DONE_GREEN = 0x1f8f55;
 /** A short beat after the last item lands, so you can see the order complete. */
 const PAYMENT_DELAY_MS = 350;
 const EMPTY_HANDED_MS = 1900;
@@ -58,6 +61,11 @@ export class ShackScene extends Phaser.Scene {
   private portrait!: Phaser.GameObjects.Image;
   private bubble!: Phaser.GameObjects.Rectangle;
   private bubbleTail!: Phaser.GameObjects.Triangle;
+  private speech!: Phaser.GameObjects.Rectangle;
+  private speechTail!: Phaser.GameObjects.Triangle;
+  private hand!: Phaser.GameObjects.Image;
+  private heldMoney!: Phaser.GameObjects.Image;
+  private heldCard!: Phaser.GameObjects.Image;
   private bubbleLines: { destroy(): void }[] = [];
   private spoken = '';
   private spokenColour: number = COLOURS.ink;
@@ -89,14 +97,20 @@ export class ShackScene extends Phaser.Scene {
   create() {
     this.add.image(WINDOW.x, WINDOW.y, 'beach').setOrigin(0).setDepth(0);
     this.waitingArt = [0, 1, 2, 3].map((i) =>
-      this.add.image(172 - i * 13, 104 + (i % 2) * 3, 'waiting').setOrigin(0).setDepth(1).setVisible(false),
+      this.add.image(162 - i * 9, 118 + (i % 2) * 2 + i * 3, 'waiting').setOrigin(0).setDepth(1).setVisible(false),
     );
     this.portrait = this.add.image(-PORTRAIT_OFFSCREEN, WINDOW.y + WINDOW.h, 'cust_0').setOrigin(0.5, 1).setDepth(2);
     this.shutter = this.add.image(WINDOW.x, WINDOW.y, 'shutter').setOrigin(0).setDepth(3);
-    this.closedSign = label(this, WINDOW.x + WINDOW.w / 2, WINDOW.y + 60, 'CLOSED', COLOURS.white, 'center').setDepth(3.5);
+    this.closedSign = label(this, WINDOW.x + WINDOW.w / 2, WINDOW.y + 54, 'CLOSED', COLOURS.white, 'center').setDepth(3.5);
     this.add.image(0, 0, 'shop').setOrigin(0).setDepth(4);
     this.bubble = this.add.rectangle(BUBBLE_X, BUBBLE_Y, BUBBLE_W, 40, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
-    this.bubbleTail = this.add.triangle(0, 0, 0, 0, 0, 8, -7, 8, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
+    this.bubbleTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
+    this.speech = this.add.rectangle(BUBBLE_X, BUBBLE_Y, BUBBLE_W, 20, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
+    this.speechTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
+    label(this, WINDOW.x + WINDOW.w / 2, 25, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
+    this.heldMoney = this.add.image(HAND_X + 14, HAND_Y + 21, 'desk_2000').setDepth(5.1).setVisible(false);
+    this.heldCard = this.add.image(HAND_X + 14, HAND_Y + 21, 'held_card').setDepth(5.1).setVisible(false);
+    this.hand = this.add.image(HAND_X, HAND_Y, 'hand_0').setOrigin(0).setDepth(5.2).setVisible(false);
 
     this.add.rectangle(0, 0, WIDTH, 15, COLOURS.bg).setOrigin(0).setDepth(6);
     this.dayText = label(this, 4, 4, '').setDepth(7);
@@ -147,6 +161,7 @@ export class ShackScene extends Phaser.Scene {
     this.current = null;
     this.busy = false;
     this.readyToPay = false;
+    this.hidePayment();
     this.clearTable();
     this.portrait.setX(-PORTRAIT_OFFSCREEN);
     this.shutter.setY(WINDOW.y);
@@ -373,6 +388,7 @@ export class ShackScene extends Phaser.Scene {
       ease: 'Quad.easeOut',
       onComplete: () => {
         this.busy = false;
+        this.showPayment(customer);
         this.renderBubble();
         // With nothing at all on the shelves, they say so and move on.
         if (customer.wants.length === 0) {
@@ -384,7 +400,22 @@ export class ShackScene extends Phaser.Scene {
     });
   }
 
+  /** They hold out cash or a card over the counter, so you can see how they'll pay. */
+  private showPayment(customer: Customer) {
+    if (customer.wants.length === 0) return;
+    const held = customer.paidByCash ? this.heldMoney : this.heldCard;
+    this.hand.setTexture(`hand_${customer.look}`).setVisible(true).setAlpha(0);
+    held.setVisible(true).setAlpha(0);
+    this.tweens.add({ targets: [this.hand, held], alpha: 1, duration: 160 });
+  }
+
+  private hidePayment() {
+    this.tweens.killTweensOf([this.hand, this.heldMoney, this.heldCard]);
+    [this.hand, this.heldMoney, this.heldCard].forEach((o) => o.setVisible(false));
+  }
+
   private dismiss() {
+    this.hidePayment();
     this.current = null;
     session.wants = null;
     this.busy = true;
@@ -413,36 +444,48 @@ export class ShackScene extends Phaser.Scene {
     this.bubbleLines = [];
     const customer = this.current;
     const visible = customer !== null && !this.busy;
-    this.bubble.setVisible(visible);
-    this.bubbleTail.setVisible(visible);
+    const hasList = visible && customer.wants.length > 0;
+    this.bubble.setVisible(hasList);
+    this.bubbleTail.setVisible(hasList);
+    this.speech.setVisible(false);
+    this.speechTail.setVisible(false);
     if (!visible) return;
+
     const put = (y: number, text: string, colour: number) => {
       const t = label(this, BUBBLE_X + 3, y, text, colour).setDepth(6);
+      t.setMaxWidth(BUBBLE_W - 6);
       this.bubbleLines.push(t);
       return t;
     };
-    let y = BUBBLE_Y + 4;
-    requestLines(customer.wants, session.table).forEach((line) => {
-      put(y, `${line.qty} ${getProduct(line.productId).name}`, line.done ? 0x2f7d55 : COLOURS.ink);
-      y += 10;
-    });
-    if (customer.wants.length > 0) {
-      y += 1;
-      put(y, customer.paidByCash ? 'PAYING CASH' : 'PAYING CARD', customer.paidByCash ? 0x8a5a14 : 0x2a62a8);
-      y += 10;
+    const place = (box: Phaser.GameObjects.Rectangle, tail: Phaser.GameObjects.Triangle, top: number, bottom: number) => {
+      box.setPosition(BUBBLE_X, top).setSize(BUBBLE_W, bottom - top).setVisible(true);
+      tail.setPosition(BUBBLE_X + 1, bottom - 8).setVisible(true);
+    };
+
+    // The list: finished lines become a solid green row with a check mark
+    let y = BUBBLE_Y + 3;
+    if (hasList) {
+      requestLines(customer.wants, session.table).forEach((line) => {
+        const name = getProduct(line.productId).name;
+        if (line.done) {
+          const row = this.add.rectangle(BUBBLE_X + 1, y - 1, BUBBLE_W - 2, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
+          this.bubbleLines.push(row);
+          put(y, `\u2713 ${name}`, COLOURS.white);
+        } else {
+          put(y, `${line.remaining} ${name}`, COLOURS.ink);
+        }
+        y += 11;
+      });
+      place(this.bubble, this.bubbleTail, BUBBLE_Y, y + 1);
+      y += 7;
     }
-    if (this.spoken) {
-      y += 1;
-      y += put(y, this.spoken, this.spokenColour).setMaxWidth(BUBBLE_W - 6).height + 2;
-    }
-    if (customer.wished.length > 0) {
-      y += 1;
-      const wish = put(y, `I WISH YOU HAD ${getProduct(customer.wished[0]).name}`, 0x6d6352);
-      y += wish.setMaxWidth(BUBBLE_W - 6).height + 2;
-    }
-    const bottom = y + 2;
-    this.bubble.setSize(BUBBLE_W, bottom - BUBBLE_Y);
-    this.bubbleTail.setPosition(BUBBLE_X + 1, bottom - 1);
+
+    // Anything else they say goes in its own bubble below
+    const speechTop = y - 3;
+    const wish = customer.wished.length > 0 ? `I WISH YOU HAD ${getProduct(customer.wished[0]).name}` : '';
+    if (this.spoken) y += put(y, this.spoken, this.spokenColour).height + 2;
+    if (wish) y += put(y, wish, 0x6d6352).height + 2;
+    if (this.spoken || wish) place(this.speech, this.speechTail, speechTop, y + 1);
   }
 
   private pressAction() {
@@ -456,22 +499,32 @@ export class ShackScene extends Phaser.Scene {
     if (!customer || session.modal) return;
     const items = session.table.slice();
     const total = items.reduce((sum, id) => sum + getProduct(id).retail, 0);
-    if (customer.tender?.total !== total) customer.tender = { total, amount: customerTender(total) };
+    const charged = customer.paidByCash ? roundToNickel(total) : total;
+    if (customer.tender?.total !== charged) customer.tender = { total: charged, amount: customerTender(charged) };
+    this.setDeskClear(true);
     this.openModal('Register', {
       items,
-      total,
+      total: charged,
       paidByCash: customer.paidByCash,
       tendered: customer.paidByCash ? customer.tender.amount : 0,
       onDone: () => {
+        this.setDeskClear(false);
         this.clearTable();
         this.dismiss();
-        this.floatMoney(total);
+        this.floatMoney(charged);
       },
       onBack: () => {
+        this.setDeskClear(false);
         this.readyToPay = true;
         this.say('');
       },
     });
+  }
+
+  /** Payment uses the desk for counting out change, so what's on it steps aside. */
+  private setDeskClear(clear: boolean) {
+    this.table.forEach((t) => t.image.setVisible(!clear));
+    this.box?.setVisible(!clear);
   }
 
   private floatMoney(total: number) {
