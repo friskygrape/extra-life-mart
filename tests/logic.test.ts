@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { SHELF_SLOTS } from '../src/data/shelves';
-import { getProduct, SHELF_CAPACITY } from '../src/data/products';
-import { checkHandOver, requestLines } from '../src/logic/basket';
+import { getProduct, PRODUCTS, SHELF_CAPACITY } from '../src/data/products';
+import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
 import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
-import { buildWishlist } from '../src/logic/customers';
+import { buildRequest } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
-import { buyLicence, lockedProducts } from '../src/logic/licences';
-import { emptyShelf, findShelfWith, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
+import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
+import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
 import { customerTender, formatCents } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder } from '../src/logic/orders';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
-import { newGame } from '../src/logic/state';
+import { newGame, type GameState } from '../src/logic/state';
 
-const foodShelf = () => SHELF_SLOTS.find((s) => s.kind === 'food')!.id;
-const gameShelf = () => SHELF_SLOTS.find((s) => s.kind === 'game')!.id;
+const SHELF = 'shelf-0-0';
+const SHELF2 = 'shelf-0-1';
+const onShelf = (s: GameState, id: string) => s.shelves.find((shelf) => shelf.productId === id)?.qty ?? 0;
 
 function memoryStore(): SaveStore {
   const data = new Map<string, string>();
@@ -24,13 +24,18 @@ function memoryStore(): SaveStore {
   };
 }
 
+/** Replays fixed numbers in place of Math.random. */
+const sequence = (...values: number[]) => {
+  let i = 0;
+  return () => values[i++ % values.length];
+};
+
 describe('money', () => {
   it('formats cents', () => {
     expect(formatCents(1999)).toBe('$19.99');
     expect(formatCents(5)).toBe('$0.05');
     expect(formatCents(-250)).toBe('-$2.50');
   });
-
   it('customers always tender more than the total', () => {
     for (const total of [1, 99, 100, 129, 500, 1000, 2000, 4276, 10000, 15996]) {
       for (const r of [0, 0.5, 0.99]) expect(customerTender(total, () => r)).toBeGreaterThan(total);
@@ -63,75 +68,164 @@ describe('checkout', () => {
 });
 
 describe('orders', () => {
-  it('charges now and delivers later', () => {
+  it('charges now and delivers when unpacked', () => {
     const s = newGame();
-    const cart = { jerky: 2 };
+    const cart = { chips: 10 };
     expect(placeOrder(s, cart)).toBe(true);
-    expect(s.balance).toBe(20000 - cartCost(cart));
-    expect(s.stockroom.jerky).toBeUndefined();
-    expect(deliverOrders(s)).toBe(2);
-    expect(s.stockroom.jerky).toBe(2);
+    expect(s.balance).toBe(10000 - cartCost(cart));
+    expect(s.stockroom.chips).toBe(10);
+    expect(deliverOrders(s)).toBe(10);
+    expect(s.stockroom.chips).toBe(20);
     expect(s.pendingOrders).toEqual({});
   });
   it('refuses orders you cannot afford, and empty ones', () => {
     const s = newGame();
     s.balance = 100;
-    expect(placeOrder(s, { cave: 1 })).toBe(false);
+    expect(placeOrder(s, { chips: 10 })).toBe(false);
     expect(placeOrder(s, {})).toBe(false);
     expect(s.balance).toBe(100);
   });
 });
 
 describe('shelves', () => {
-  it('moves stock from the stockroom', () => {
+  it('moves stock from your stock', () => {
     const s = newGame();
-    expect(stockShelf(s, foodShelf(), 'chips', 4)).toBe('ok');
+    expect(stockShelf(s, SHELF, 'chips', 4)).toBe('ok');
     expect(s.stockroom.chips).toBe(6);
-    expect(findShelfWith(s, 'chips')?.qty).toBe(4);
-  });
-  it('keeps food and games on their own shelves', () => {
-    const s = newGame();
-    expect(stockShelf(s, gameShelf(), 'chips', 1)).toBe('wrong-kind');
-    expect(stockShelf(s, foodShelf(), 'golf', 1)).toBe('wrong-kind');
+    expect(onShelf(s, 'chips')).toBe(4);
   });
   it('holds one product at a time until emptied', () => {
     const s = newGame();
-    stockShelf(s, foodShelf(), 'chips', 2);
-    expect(stockShelf(s, foodShelf(), 'soda', 1)).toBe('shelf-taken');
-    emptyShelf(s, foodShelf());
+    stockShelf(s, SHELF, 'chips', 2);
+    expect(stockShelf(s, SHELF, 'soda', 1)).toBe('shelf-taken');
+    emptyShelf(s, SHELF);
     expect(s.stockroom.chips).toBe(10);
-    expect(stockShelf(s, foodShelf(), 'soda', 1)).toBe('ok');
+    expect(stockShelf(s, SHELF, 'soda', 1)).toBe('ok');
   });
   it('stops at capacity', () => {
     const s = newGame();
     s.stockroom.chips = 50;
-    expect(stockShelf(s, foodShelf(), 'chips', 50)).toBe('ok');
-    expect(findShelfWith(s, 'chips')?.qty).toBe(SHELF_CAPACITY.food);
-    expect(stockShelf(s, foodShelf(), 'chips', 1)).toBe('shelf-full');
+    expect(stockShelf(s, SHELF, 'chips', 50)).toBe('ok');
+    expect(onShelf(s, 'chips')).toBe(SHELF_CAPACITY);
+    expect(stockShelf(s, SHELF, 'chips', 1)).toBe('shelf-full');
   });
   it('reports when there is nothing to stock', () => {
-    expect(stockShelf(newGame(), foodShelf(), 'pie', 1)).toBe('none-in-stock');
+    expect(stockShelf(newGame(), SHELF, 'pie', 1)).toBe('none-in-stock');
   });
-  it('customers take one at a time and an emptied shelf frees up', () => {
+  it('knows whether you are ready to open', () => {
     const s = newGame();
-    stockShelf(s, foodShelf(), 'chips', 1);
-    expect(takeFromShelf(s, foodShelf(), 'chips')).toBe(true);
-    expect(takeFromShelf(s, foodShelf(), 'chips')).toBe(false);
-    expect(findShelfWith(s, 'chips')).toBeNull();
+    expect(anyShelfStocked(s)).toBe(false);
+    stockShelf(s, SHELF, 'chips', 1);
+    expect(anyShelfStocked(s)).toBe(true);
+  });
+  it('taking the last one frees the shelf', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 1);
+    expect(takeFromShelf(s, SHELF, 'chips')).toBe(true);
+    expect(takeFromShelf(s, SHELF, 'chips')).toBe(false);
+    expect(s.shelves[0].productId).toBeNull();
+  });
+});
+
+describe('putting items back', () => {
+  it('goes back on the shelf holding that product', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 3);
+    takeFromShelf(s, SHELF, 'chips');
+    returnItem(s, 'chips');
+    expect(onShelf(s, 'chips')).toBe(3);
+  });
+  it('uses an empty shelf if its own has run out', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 1);
+    takeFromShelf(s, SHELF, 'chips');
+    returnItem(s, 'chips');
+    expect(onShelf(s, 'chips')).toBe(1);
+  });
+  it('goes back to stock when every shelf is taken', () => {
+    const s = newGame();
+    s.shelves.forEach((shelf) => Object.assign(shelf, { productId: 'soda', qty: 1 }));
+    s.stockroom.chips = 0;
+    returnItem(s, 'chips');
+    expect(s.stockroom.chips).toBe(1);
+  });
+});
+
+describe('what customers ask for', () => {
+  it('only wants what is on the shelves, never more than there is', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 2);
+    stockShelf(s, SHELF2, 'soda', 1);
+    for (let i = 0; i < 200; i++) {
+      const { wants } = buildRequest(s);
+      expect(wants.length).toBeGreaterThanOrEqual(1);
+      expect(wants.length).toBeLessThanOrEqual(3);
+      expect(wants.filter((id) => id === 'chips').length).toBeLessThanOrEqual(2);
+      expect(wants.filter((id) => id === 'soda').length).toBeLessThanOrEqual(1);
+      expect(wants.every((id) => id === 'chips' || id === 'soda')).toBe(true);
+    }
+  });
+  it('wishes for a licensed snack that is not stocked, which lowers what they buy', () => {
+    const s = newGame();
+    s.unlocked = ['chips', 'jerky'];
+    stockShelf(s, SHELF, 'chips', 5);
+    // Wants 3 items (0.5): jerky, chips, jerky.
+    const { wants, wished } = buildRequest(s, sequence(0.5, 0.9, 0.1, 0.9));
+    expect(wants).toEqual(['chips']);
+    expect(wished).toEqual(['jerky', 'jerky']);
+  });
+  it('never mentions a snack you have no licence for', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 5);
+    for (let i = 0; i < 200; i++) {
+      const { wants, wished } = buildRequest(s);
+      [...wants, ...wished].forEach((id) => expect(getProduct(id).licence).toBeUndefined());
+    }
+  });
+  it('still buys something if they only went for unstocked snacks', () => {
+    const s = newGame();
+    s.unlocked = ['chips', 'jerky'];
+    stockShelf(s, SHELF, 'chips', 5);
+    const { wants, wished } = buildRequest(s, sequence(0, 0.9, 0));
+    expect(wants).toEqual(['chips']);
+    expect(wished).toEqual([]);
+  });
+  it('wants nothing when the shelves are bare', () => {
+    const { wants, wished } = buildRequest(newGame());
+    expect(wants).toEqual([]);
+    expect(wished.length).toBeGreaterThan(0);
+  });
+});
+
+describe('fetching items', () => {
+  it('only lets you put out what was asked for, up to the amount', () => {
+    expect(canAddToTable(['chips', 'chips'], ['chips'], 'chips')).toBe(true);
+    expect(canAddToTable(['chips', 'chips'], ['chips', 'chips'], 'chips')).toBe(false);
+    expect(canAddToTable(['chips'], [], 'soda')).toBe(false);
+  });
+  it('knows when the order is complete, in any order', () => {
+    expect(isOrderComplete(['chips', 'soda'], ['soda'])).toBe(false);
+    expect(isOrderComplete(['chips', 'soda'], ['soda', 'chips'])).toBe(true);
+  });
+  it('groups the request and marks finished lines', () => {
+    expect(requestLines(['chips', 'chips', 'soda'], ['chips', 'soda'])).toEqual([
+      { productId: 'chips', qty: 2, done: false },
+      { productId: 'soda', qty: 1, done: true },
+    ]);
   });
 });
 
 describe('day cycle', () => {
   it('profit is revenue minus overpayment and stock bought', () => {
-    expect(dayProfit({ revenue: 1000, overpaid: 100, orderSpend: 300, licenceSpend: 0, missedSales: 2, customersServed: 3 })).toBe(600);
+    expect(dayProfit({ revenue: 1000, overpaid: 100, orderSpend: 300, upgradeSpend: 500, missedSales: 2, customersServed: 3 })).toBe(600);
   });
   it('ending a day summarizes and advances, and orders stay on their way', () => {
     const s = newGame();
-    placeOrder(s, { jerky: 1 });
-    completeSale(s, 500, 0);
+    placeOrder(s, { chips: 10 });
+    completeSale(s, 1000, 0);
     const { summary } = endDay(s);
-    expect(summary).toMatchObject({ day: 1, revenue: 500, profit: 500 - 150, newBest: true });
-    expect(s.pendingOrders).toEqual({ jerky: 1 });
+    expect(summary).toMatchObject({ day: 1, revenue: 1000, profit: 200, newBest: true });
+    expect(s.pendingOrders).toEqual({ chips: 10 });
     expect(s.day).toBe(2);
     expect(s.stats.revenue).toBe(0);
   });
@@ -141,12 +235,9 @@ describe('day cycle', () => {
     expect(endDay(s).summary.newBest).toBe(false);
     expect(s.bestProfit).toBe(1000);
   });
-});
-
-describe('best day', () => {
   it('a losing day is never a best day', () => {
     const s = newGame();
-    placeOrder(s, { jerky: 1 });
+    placeOrder(s, { chips: 10 });
     expect(endDay(s).summary.newBest).toBe(false);
     expect(s.bestProfit).toBeNull();
   });
@@ -165,10 +256,10 @@ describe('broke safeguard', () => {
     expect(s.stockroom).toEqual(STARTER_BOX);
   });
   it.each([
-    ['money for the cheapest item', (s: ReturnType<typeof newGame>) => void (s.balance = 100)],
-    ['stock in the stockroom', (s: ReturnType<typeof newGame>) => void (s.stockroom.chips = 1)],
-    ['an order on the way', (s: ReturnType<typeof newGame>) => void (s.pendingOrders.chips = 1)],
-    ['stock on a shelf', (s: ReturnType<typeof newGame>) => void Object.assign(s.shelves[0], { productId: 'chips', qty: 1 })],
+    ['money for the cheapest item', (s: GameState) => void (s.balance = 100)],
+    ['stock left', (s: GameState) => void (s.stockroom.chips = 1)],
+    ['an order on the way', (s: GameState) => void (s.pendingOrders.chips = 1)],
+    ['stock on a shelf', (s: GameState) => void Object.assign(s.shelves[0], { productId: 'chips', qty: 1 })],
   ])('does nothing if you have %s', (_label, setup) => {
     const s = broke();
     setup(s);
@@ -195,107 +286,63 @@ describe('save', () => {
   });
 });
 
-describe('wishlists', () => {
-  it('have 1 to 4 products, all of them unlocked', () => {
-    for (let i = 0; i < 200; i++) {
-      const list = buildWishlist(newGame().unlocked);
-      expect(list.length).toBeGreaterThanOrEqual(1);
-      expect(list.length).toBeLessThanOrEqual(4);
-      list.forEach((id) => expect(getProduct(id).licence).toBeUndefined());
-    }
-  });
-});
-
-describe('handing items over', () => {
-  const never = () => false;
-  it('accepts exactly what was asked for', () => {
-    expect(checkHandOver(['chips', 'soda'], ['soda', 'chips'], never)).toEqual({ status: 'ok', missed: 0 });
-  });
-  it('refuses the wrong item or too many', () => {
-    expect(checkHandOver(['chips'], ['soda'], never)).toEqual({ status: 'extra', productId: 'soda' });
-    expect(checkHandOver(['chips'], ['chips', 'chips'], never)).toEqual({ status: 'extra', productId: 'chips' });
-  });
-  it('refuses to skip an item that is still on a shelf', () => {
-    expect(checkHandOver(['chips', 'soda'], ['chips'], (id) => id === 'soda')).toEqual({
-      status: 'still-on-shelf',
-      productId: 'soda',
-    });
-  });
-  it('counts sold-out items as missed sales', () => {
-    expect(checkHandOver(['chips', 'chips', 'soda'], ['chips'], never)).toEqual({ status: 'ok', missed: 2 });
-  });
-  it('lets you send someone away only if you have nothing they want', () => {
-    expect(checkHandOver(['chips', 'soda'], [], never)).toEqual({ status: 'nothing', missed: 2 });
-    expect(checkHandOver(['chips'], [], () => true).status).toBe('still-on-shelf');
-  });
-  it('groups the request and marks finished lines', () => {
-    expect(requestLines(['chips', 'chips', 'soda', 'pie'], ['chips', 'soda'], (id) => id === 'chips')).toEqual([
-      { productId: 'chips', qty: 2, done: false, soldOut: false },
-      { productId: 'soda', qty: 1, done: true, soldOut: false },
-      { productId: 'pie', qty: 1, done: false, soldOut: true },
-    ]);
-  });
-});
-
-describe('putting items back', () => {
-  it('goes back on the shelf holding that product', () => {
-    const s = newGame();
-    stockShelf(s, foodShelf(), 'chips', 3);
-    takeFromShelf(s, foodShelf(), 'chips');
-    returnItem(s, 'chips');
-    expect(findShelfWith(s, 'chips')?.qty).toBe(3);
-  });
-  it('uses an empty shelf if its own has run out', () => {
-    const s = newGame();
-    stockShelf(s, foodShelf(), 'chips', 1);
-    takeFromShelf(s, foodShelf(), 'chips');
-    returnItem(s, 'chips');
-    expect(findShelfWith(s, 'chips')?.qty).toBe(1);
-  });
-  it('goes to the back room when every shelf is taken', () => {
-    const s = newGame();
-    s.shelves.forEach((shelf) => Object.assign(shelf, { productId: shelf.kind === 'food' ? 'soda' : 'golf', qty: 1 }));
-    s.stockroom.chips = 0;
-    returnItem(s, 'chips');
-    expect(s.stockroom.chips).toBe(1);
-  });
-});
-
 describe('licences', () => {
-  it('starts with only the unlicensed products unlocked', () => {
+  it('starts with only the unlicensed snacks unlocked', () => {
     const s = newGame();
-    expect(s.unlocked).toEqual(['chips', 'soda', 'choco', 'noodle', 'golf', 'mops']);
+    expect(s.unlocked).toEqual(['chips', 'soda', 'choco', 'noodle']);
     expect(lockedProducts(s)[0].id).toBe('jerky');
   });
-  it('charges for a licence and unlocks the product', () => {
+  it('charges for a licence and unlocks the snack', () => {
     const s = newGame();
     expect(buyLicence(s, 'jerky')).toBe(true);
-    expect(s.balance).toBe(20000 - 7500);
+    expect(s.balance).toBe(10000 - 4000);
     expect(s.unlocked).toContain('jerky');
-    expect(s.stats.licenceSpend).toBe(7500);
+    expect(s.stats.upgradeSpend).toBe(4000);
   });
   it('refuses licences you cannot afford or already own', () => {
     const s = newGame();
-    expect(buyLicence(s, 'cave')).toBe(false);
+    expect(buyLicence(s, 'shave')).toBe(false);
     expect(buyLicence(s, 'chips')).toBe(false);
-    expect(s.balance).toBe(20000);
+    expect(s.balance).toBe(10000);
   });
-  it('a licence purchase does not count against the day profit', () => {
+  it('a purchase does not count against the day profit', () => {
     const s = newGame();
     buyLicence(s, 'jerky');
     expect(dayProfit(s.stats)).toBe(0);
   });
-  it('customers can want a product once it is licensed', () => {
-    const s = newGame();
-    s.unlocked = ['jerky'];
-    expect(buildWishlist(s.unlocked)).toContain('jerky');
-  });
-  it('every licensed product earns more per sale than any starter of its kind', () => {
+  it('each licence earns more per sale than the one before, and more than any starter', () => {
     const margin = (id: string) => getProduct(id).retail - getProduct(id).wholesale;
-    const starters = newGame().unlocked;
+    const starters = PRODUCTS.filter((p) => !p.licence).map((p) => margin(p.id));
+    let previous = Math.max(...starters);
     for (const locked of lockedProducts(newGame())) {
-      const best = Math.max(...starters.filter((id) => getProduct(id).kind === locked.kind).map(margin));
-      expect(margin(locked.id)).toBeGreaterThan(best);
+      expect(margin(locked.id)).toBeGreaterThan(previous);
+      previous = margin(locked.id);
     }
+  });
+});
+
+describe('shelf rows', () => {
+  it('starts with four shelves', () => {
+    expect(newGame().shelves).toHaveLength(4);
+  });
+  it('buying a row adds four empty shelves and charges for it', () => {
+    const s = newGame();
+    const price = nextRowPrice(s)!;
+    expect(buyShelfRow(s)).toBe(true);
+    expect(s.shelves).toHaveLength(8);
+    expect(s.balance).toBe(10000 - price);
+    expect(s.rowsOwned).toBe(2);
+    expect(s.stats.upgradeSpend).toBe(price);
+  });
+  it('refuses a row you cannot afford, and stops at three', () => {
+    const s = newGame();
+    s.balance = 100;
+    expect(buyShelfRow(s)).toBe(false);
+    s.balance = 1000000;
+    buyShelfRow(s);
+    buyShelfRow(s);
+    expect(s.shelves).toHaveLength(12);
+    expect(nextRowPrice(s)).toBeNull();
+    expect(buyShelfRow(s)).toBe(false);
   });
 });

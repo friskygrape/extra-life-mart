@@ -36,6 +36,7 @@ class Session {
   readonly dayLength = dayLengthSeconds();
   waiting = 0;
   wants: string[] | null = null;
+  payingCash = false;
   table: string[] = [];
   sale: ActiveSale | null = null;
   message = '';

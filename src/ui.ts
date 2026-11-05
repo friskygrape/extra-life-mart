@@ -6,20 +6,20 @@ export const WIDTH = 216;
 export const HEIGHT = 384;
 
 export const COLOURS = {
-  bg: 0x171b1e,
-  panel: 0x232b2e,
-  panelLight: 0x38474a,
-  border: 0x5a4a42,
-  white: 0xece3cc,
-  dim: 0x93a3a0,
-  gold: 0xf0b04a,
-  green: 0x8fe0a0,
-  red: 0xf0705f,
-  button: 0x3d4c4f,
-  buttonPressed: 0x232b2e,
-  accent: 0x2f8a68,
-  ink: 0x2b2420,
-  paper: 0xe9dfc2,
+  bg: 0x1b3346,
+  panel: 0x254760,
+  panelLight: 0x356482,
+  border: 0x5f8ca6,
+  white: 0xfbf3df,
+  dim: 0xa9c6d6,
+  gold: 0xffc65c,
+  green: 0x9df0b0,
+  red: 0xff8d7a,
+  button: 0x3a6a88,
+  buttonPressed: 0x254760,
+  accent: 0x1f9c8a,
+  ink: 0x2c2a33,
+  paper: 0xfbf1d8,
 };
 
 export type Align = 'left' | 'center' | 'right';

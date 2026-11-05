@@ -1,33 +1,36 @@
 import Phaser from 'phaser';
 import { sfx } from '../audio';
-import type { Product } from '../data/products';
-import { buyLicence, lockedProducts, unlockedProducts } from '../logic/licences';
+import { BOX_SIZE, type Product } from '../data/products';
+import { SHELF_ROW_PRICES } from '../data/shelves';
+import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, unlockedProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
 import { cartCost, placeOrder, type Cart } from '../logic/orders';
 import { session } from '../session';
 import { COLOURS, WIDTH, backdrop, button, label } from '../ui';
 
-type Tab = 'food' | 'game' | 'licences';
+export type OrderTab = 'snacks' | 'licences' | 'shelves';
 
 const ROW_H = 38;
 const LIST_Y = 54;
+const PER_PAGE = 6;
 
 export class OrderScene extends Phaser.Scene {
-  private tab: Tab = 'food';
+  private tab: OrderTab = 'snacks';
+  private page = 0;
   private cart: Cart = {};
   private content: { destroy(): void }[] = [];
   private notice = '';
-  private confirming: string | null = null;
 
   constructor() {
     super('Order');
   }
 
-  create() {
+  create(data?: { tab?: OrderTab }) {
+    this.tab = data?.tab ?? 'snacks';
+    this.page = 0;
     this.cart = {};
     this.content = [];
     this.notice = '';
-    this.confirming = null;
     backdrop(this);
     this.input.keyboard?.on('keydown-ESC', () => this.close());
     this.render();
@@ -43,39 +46,52 @@ export class OrderScene extends Phaser.Scene {
     this.content = [];
     const { state } = session;
 
-    this.track(label(this, 6, 4, 'SUPPLIER', COLOURS.gold));
+    this.track(label(this, 6, 4, 'ORDER STOCKS', COLOURS.gold));
     this.track(button(this, WIDTH - 50, 3, 46, 20, 'CLOSE', () => this.close()));
     this.track(label(this, 6, 14, formatCents(state.balance), COLOURS.dim));
 
-    const tab = (x: number, w: number, id: Tab, text: string) =>
+    const tab = (x: number, w: number, id: OrderTab, text: string) =>
       this.track(button(this, x, 27, w, 24, text, () => {
         this.tab = id;
-        this.confirming = null;
+        this.page = 0;
         this.render();
       }, this.tab === id ? COLOURS.panelLight : COLOURS.panel));
-    tab(4, 60, 'food', 'FOOD');
-    tab(66, 60, 'game', 'GAMES');
-    tab(128, 84, 'licences', 'LICENCES');
+    tab(4, 62, 'snacks', 'SNACKS');
+    tab(68, 72, 'licences', 'LICENCES');
+    tab(142, 70, 'shelves', 'SHELVES');
 
-    if (this.tab === 'licences') this.renderLicences();
-    else unlockedProducts(state).filter((p) => p.kind === this.tab).forEach((p, i) => this.productRow(p, i));
+    if (this.tab === 'snacks') this.renderList(unlockedProducts(state), (p, y) => this.productRow(p, y));
+    else if (this.tab === 'licences') this.renderLicences();
+    else this.renderShelves();
     this.renderFooter();
   }
 
-  private productRow(product: Product, index: number) {
-    const { state } = session;
-    const y = LIST_Y + index * ROW_H;
-    const qty = this.cart[product.id] ?? 0;
-    const have = state.stockroom[product.id] ?? 0;
-    const coming = state.pendingOrders[product.id] ?? 0;
+  private renderList(products: Product[], row: (p: Product, y: number) => void) {
+    const pages = Math.max(1, Math.ceil(products.length / PER_PAGE));
+    this.page = Math.min(this.page, pages - 1);
+    if (pages > 1) {
+      this.track(button(this, 92, 3, 22, 20, '<', () => this.turn(-1))).setEnabled(this.page > 0);
+      this.track(button(this, 138, 3, 22, 20, '>', () => this.turn(1))).setEnabled(this.page < pages - 1);
+      this.track(label(this, 126, 9, `${this.page + 1}/${pages}`, COLOURS.dim, 'center'));
+    }
+    products.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE).forEach((p, i) => row(p, LIST_Y + i * ROW_H));
+  }
+
+  private turn(delta: number) {
+    this.page += delta;
+    this.render();
+  }
+
+  private productRow(product: Product, y: number) {
+    const boxes = (this.cart[product.id] ?? 0) / BOX_SIZE;
+    const have = session.state.stockroom[product.id] ?? 0;
     this.track(this.add.image(12, y + 17, `item_${product.id}`));
     this.track(label(this, 24, y + 2, product.name));
-    this.track(label(this, 24, y + 12, `${formatCents(product.wholesale)}>${formatCents(product.retail)}`, COLOURS.gold));
-    this.track(label(this, 24, y + 22, `HAVE ${have}${coming ? `+${coming}` : ''}`, COLOURS.dim));
-    const minus = this.track(button(this, 130, y + 2, 28, 32, '-', () => this.change(product.id, -1)));
-    minus.setEnabled(qty > 0);
-    this.track(label(this, 167, y + 14, String(qty), qty ? COLOURS.gold : COLOURS.dim, 'center'));
-    this.track(button(this, 176, y + 2, 36, 32, '+', () => this.change(product.id, 1)));
+    this.track(label(this, 24, y + 12, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
+    this.track(label(this, 24, y + 22, `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
+    this.track(button(this, 136, y + 2, 26, 32, '-', () => this.change(product.id, -BOX_SIZE))).setEnabled(boxes > 0);
+    this.track(label(this, 169, y + 14, String(boxes), boxes ? COLOURS.gold : COLOURS.dim, 'center'));
+    this.track(button(this, 176, y + 2, 36, 32, '+', () => this.change(product.id, BOX_SIZE)));
   }
 
   private renderLicences() {
@@ -84,30 +100,42 @@ export class OrderScene extends Phaser.Scene {
       this.track(label(this, WIDTH / 2, 120, 'EVERYTHING UNLOCKED!', COLOURS.green, 'center'));
       return;
     }
-    locked.forEach((product, i) => {
-      const y = LIST_Y + i * ROW_H;
+    this.renderList(locked, (product, y) => {
       const price = product.licence!;
-      const canAfford = price <= session.state.balance;
       this.track(this.add.image(12, y + 17, `item_${product.id}`));
-      this.track(label(this, 24, y + 4, product.name));
-      this.track(label(this, 24, y + 16, `+${formatCents(product.retail - product.wholesale)} A SALE`, COLOURS.green));
-      const confirming = this.confirming === product.id;
-      const buy = this.track(button(this, 142, y + 2, 70, 32, confirming ? 'SURE?' : formatCents(price), () => {
-        if (!confirming) {
-          this.confirming = product.id;
-          this.render();
-          return;
-        }
-        this.confirming = null;
-        if (buyLicence(session.state, product.id)) {
-          sfx.unlock();
-          this.notice = `${product.short} UNLOCKED!`;
-          if (session.phase === 'morning') session.save();
-          session.events.emit('shelves-changed');
-        }
+      this.track(label(this, 24, y + 6, product.name));
+      this.track(label(this, 24, y + 18, `+${formatCents(product.retail - product.wholesale)} A SALE`, COLOURS.green));
+      this.track(button(this, 142, y + 2, 70, 32, formatCents(price), () => {
+        if (!buyLicence(session.state, product.id)) return;
+        sfx.unlock();
+        this.notice = `${product.short} UNLOCKED!`;
+        if (session.phase === 'morning') session.save();
         this.render();
-      }, confirming ? COLOURS.accent : COLOURS.button));
-      buy.setEnabled(canAfford);
+      }, COLOURS.button, null)).setEnabled(price <= session.state.balance);
+    });
+  }
+
+  private renderShelves() {
+    const { state } = session;
+    SHELF_ROW_PRICES.forEach((price, i) => {
+      const y = LIST_Y + i * ROW_H;
+      const rowNumber = i + 2;
+      const owned = state.rowsOwned >= rowNumber;
+      this.track(label(this, 8, y + 6, `SHELF ROW ${rowNumber}`));
+      this.track(label(this, 8, y + 18, '4 MORE SHELVES', COLOURS.green));
+      if (owned) {
+        this.track(label(this, 177, y + 14, 'OWNED', COLOURS.dim, 'center'));
+        return;
+      }
+      const isNext = nextRowPrice(state) === price;
+      this.track(button(this, 142, y + 2, 70, 32, formatCents(price), () => {
+        if (!buyShelfRow(state)) return;
+        sfx.unlock();
+        this.notice = 'NEW SHELVES ADDED!';
+        if (session.phase === 'morning') session.save();
+        session.events.emit('shelves-changed');
+        this.render();
+      }, COLOURS.button, null)).setEnabled(isNext && price <= state.balance);
     });
   }
 
@@ -119,7 +147,7 @@ export class OrderScene extends Phaser.Scene {
     this.track(label(this, 6, 311, formatCents(cost), canAfford ? COLOURS.white : COLOURS.red));
     const place = this.track(button(this, 96, 296, 116, 32, 'PLACE ORDER', () => this.submit(), COLOURS.accent, null));
     place.setEnabled(cost > 0 && canAfford);
-    const note = !canAfford ? 'NOT ENOUGH MONEY' : this.notice || 'A BOX ARRIVES SHORTLY AFTER';
+    const note = !canAfford ? 'NOT ENOUGH MONEY' : this.notice || `EACH + IS A BOX OF ${BOX_SIZE}`;
     this.track(label(this, WIDTH / 2, 342, note, !canAfford ? COLOURS.red : this.notice ? COLOURS.green : COLOURS.dim, 'center'));
   }
 
@@ -133,7 +161,7 @@ export class OrderScene extends Phaser.Scene {
     if (!placeOrder(session.state, this.cart)) return;
     sfx.order();
     this.cart = {};
-    this.notice = 'ORDER PLACED';
+    this.notice = 'ORDER PLACED. BOX ON THE WAY';
     if (session.phase === 'morning') session.save();
     session.events.emit('order-placed');
     this.render();

@@ -1,7 +1,7 @@
-import { getProduct, SHELF_CAPACITY } from '../data/products';
+import { SHELF_CAPACITY } from '../data/products';
 import type { GameState, ShelfState } from './state';
 
-export type StockResult = 'ok' | 'wrong-kind' | 'shelf-taken' | 'shelf-full' | 'none-in-stock';
+export type StockResult = 'ok' | 'shelf-taken' | 'shelf-full' | 'none-in-stock';
 
 function getShelf(state: GameState, shelfId: string): ShelfState {
   const shelf = state.shelves.find((s) => s.id === shelfId);
@@ -9,12 +9,11 @@ function getShelf(state: GameState, shelfId: string): ShelfState {
   return shelf;
 }
 
-/** Moves up to `qty` units from the stockroom onto a shelf. Partial moves still return 'ok'. */
+/** Moves up to `qty` units from stock onto a shelf. Partial moves still return 'ok'. */
 export function stockShelf(state: GameState, shelfId: string, productId: string, qty: number): StockResult {
   const shelf = getShelf(state, shelfId);
-  if (getProduct(productId).kind !== shelf.kind) return 'wrong-kind';
   if (shelf.productId && shelf.productId !== productId && shelf.qty > 0) return 'shelf-taken';
-  const room = SHELF_CAPACITY[shelf.kind] - shelf.qty;
+  const room = SHELF_CAPACITY - shelf.qty;
   if (room <= 0) return 'shelf-full';
   const available = state.stockroom[productId] ?? 0;
   if (available <= 0) return 'none-in-stock';
@@ -25,7 +24,7 @@ export function stockShelf(state: GameState, shelfId: string, productId: string,
   return 'ok';
 }
 
-/** Returns everything on a shelf to the stockroom so it can hold a different product. */
+/** Returns everything on a shelf to stock so it can hold a different product. */
 export function emptyShelf(state: GameState, shelfId: string): void {
   const shelf = getShelf(state, shelfId);
   if (shelf.productId && shelf.qty > 0) {
@@ -35,11 +34,11 @@ export function emptyShelf(state: GameState, shelfId: string): void {
   shelf.qty = 0;
 }
 
-export function findShelfWith(state: GameState, productId: string): ShelfState | null {
-  return state.shelves.find((s) => s.productId === productId && s.qty > 0) ?? null;
+export function anyShelfStocked(state: GameState): boolean {
+  return state.shelves.some((s) => s.qty > 0);
 }
 
-/** A customer takes one unit. Returns false if that shelf has run out. */
+/** Moves one unit from a shelf to the table. Returns false if that shelf has run out. */
 export function takeFromShelf(state: GameState, shelfId: string, productId: string): boolean {
   const shelf = getShelf(state, shelfId);
   if (shelf.productId !== productId || shelf.qty <= 0) return false;
@@ -48,13 +47,11 @@ export function takeFromShelf(state: GameState, shelfId: string, productId: stri
   return true;
 }
 
-/** Puts one unit back: on a shelf already holding it, else an empty shelf, else in the back room. */
+/** Puts one unit back: on a shelf already holding it, else an empty shelf, else in stock. */
 export function returnItem(state: GameState, productId: string): void {
-  const product = getProduct(productId);
-  const room = SHELF_CAPACITY[product.kind];
   const shelf =
-    state.shelves.find((s) => s.productId === productId && s.qty < room) ??
-    state.shelves.find((s) => s.kind === product.kind && s.qty === 0);
+    state.shelves.find((s) => s.productId === productId && s.qty < SHELF_CAPACITY) ??
+    state.shelves.find((s) => s.qty === 0);
   if (!shelf) {
     state.stockroom[productId] = (state.stockroom[productId] ?? 0) + 1;
     return;

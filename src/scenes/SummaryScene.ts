@@ -35,9 +35,9 @@ export class SummaryScene extends Phaser.Scene {
     this.add.rectangle(10, 128, WIDTH - 20, 1, COLOURS.border).setOrigin(0);
     label(this, 10, 136, 'PROFIT');
     label(this, WIDTH - 10, 136, formatCents(summary.profit), summary.profit >= 0 ? COLOURS.green : COLOURS.red, 'right');
-    if (summary.licenceSpend > 0) {
-      label(this, 10, 150, 'LICENCES', COLOURS.dim);
-      label(this, WIDTH - 10, 150, formatCents(-summary.licenceSpend), COLOURS.white, 'right');
+    if (summary.upgradeSpend > 0) {
+      label(this, 10, 150, 'UPGRADES', COLOURS.dim);
+      label(this, WIDTH - 10, 150, formatCents(-summary.upgradeSpend), COLOURS.white, 'right');
     }
     label(this, 10, 164, 'BALANCE');
     label(this, WIDTH - 10, 164, formatCents(summary.balance), COLOURS.gold, 'right');

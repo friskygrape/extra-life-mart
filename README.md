@@ -1,23 +1,24 @@
 # Extra Life Mart
 
-A pixel art shop game for phone browsers. Run a gritty little shack selling snacks and video games: order stock, fill your shelves, and serve customers through the window by hand.
+A pixel art shop game for phone browsers. Run a little beachfront convenience store: order snacks by the box, stock your shelves, and serve customers through the window by hand.
 
 ![Gameplay](docs/gameplay.gif)
 
 ## How to play
 
-1. **Morning:** tap an empty shelf to stock it. Use the terminal on the table to buy more stock: a delivery box lands on the table, and tapping it unpacks everything into your stock crate. Press **Open** when you're ready.
-2. **Open:** customers come to your window one at a time and say what they want. They'll wait as long as it takes.
-   - Tap a shelf to move an item onto the table, or tap an item on the table to put it back. Then press **Hand Over**.
-   - Anything you've sold out of is crossed off, and the sale carries on with the rest. If you have nothing they want, press **Say Sorry**.
+1. **Morning:** tap an empty shelf to stock it. Use the computer on the counter to order more snacks, which come in boxes of 10. A delivery box lands on the counter, and tapping it unpacks everything into your stock crate. You can't open until something is on a shelf.
+2. **Open:** customers come to your window one at a time, say what they want, and say whether they're paying cash or card. They'll wait as long as it takes.
+   - Tap a shelf to move an item onto the counter, or tap an item on the counter to put it back. Once you have everything, payment starts on its own.
    - **Cash:** the register shows the change due. Tap bills and coins to count it out. Too little is refused. Too much goes through, and you lose the extra.
    - **Card:** key the exact total into the terminal.
-   - Press **Back** at any time during payment to change the order first.
+   - Press **Back** during payment to change the order first.
 3. **Close:** check the day's sales, missed sales and profit, then start the next day. Progress saves automatically.
 
 ## Getting ahead
 
-Starter items sell, but they barely pay. Use your profits to buy licences at the terminal. Each one unlocks a new product with a better margin, and customers start asking for it right away.
+Customers only buy what's on your shelves. If they go for a snack you're licensed to sell but haven't stocked, they'll say they wish you had it, and that's a sale you missed.
+
+Starter snacks sell, but they barely pay. Spend your profits at the computer: licences unlock snacks with better margins, and extra rows of shelves give you room to stock them.
 
 ## Controls
 
@@ -34,4 +35,4 @@ npm run build        # production build in dist/
 
 ## How it's built
 
-Phaser 3, TypeScript and Vite, deployed to GitHub Pages by GitHub Actions. There are no image or audio files: all sprites and the pixel font are drawn in code (`src/art/`), and the sound effects are synthesised at runtime (`src/audio.ts`). Game rules live in `src/logic/` with no Phaser dependency, so they can be unit tested. Everything in the game, including its name, art and products, is original.
+Phaser 3, TypeScript and Vite, deployed to GitHub Pages by GitHub Actions. Customer portraits are in `public/customers/`. Everything else is drawn in code (`src/art/`), including the pixel font, and the sound effects are synthesised at runtime (`src/audio.ts`). Game rules live in `src/logic/` with no Phaser dependency, so they can be unit tested. All of the game's art and content is original.

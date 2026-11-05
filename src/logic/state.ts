@@ -1,9 +1,8 @@
-import { SHELF_SLOTS } from '../data/shelves';
-import { PRODUCTS, type ProductKind } from '../data/products';
+import { PRODUCTS } from '../data/products';
+import { slotsInRow } from '../data/shelves';
 
 export interface ShelfState {
   id: string;
-  kind: ProductKind;
   productId: string | null;
   qty: number;
 }
@@ -11,7 +10,7 @@ export interface ShelfState {
 export interface DayStats {
   revenue: number;
   orderSpend: number;
-  licenceSpend: number;
+  upgradeSpend: number;
   overpaid: number;
   missedSales: number;
   customersServed: number;
@@ -24,25 +23,31 @@ export interface GameState {
   stockroom: Record<string, number>;
   pendingOrders: Record<string, number>;
   shelves: ShelfState[];
+  rowsOwned: number;
   stats: DayStats;
   bestProfit: number | null;
   unlocked: string[];
 }
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export function emptyStats(): DayStats {
-  return { revenue: 0, orderSpend: 0, licenceSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
+  return { revenue: 0, orderSpend: 0, upgradeSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
+}
+
+export function newShelf(id: string): ShelfState {
+  return { id, productId: null, qty: 0 };
 }
 
 export function newGame(): GameState {
   return {
     version: SAVE_VERSION,
     day: 1,
-    balance: 20000,
-    stockroom: { chips: 10, soda: 10, choco: 8, noodle: 6, golf: 2, mops: 2 },
+    balance: 10000,
+    stockroom: { chips: 10, soda: 10, choco: 10, noodle: 10 },
     pendingOrders: {},
-    shelves: SHELF_SLOTS.map((s) => ({ id: s.id, kind: s.kind, productId: null, qty: 0 })),
+    shelves: slotsInRow(0).map((s) => newShelf(s.id)),
+    rowsOwned: 1,
     stats: emptyStats(),
     bestProfit: null,
     unlocked: PRODUCTS.filter((p) => !p.licence).map((p) => p.id),
