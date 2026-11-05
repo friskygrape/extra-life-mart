@@ -4,6 +4,7 @@ import { getProduct } from '../data/products';
 import { L, bubbleW, bubbleX, receiptHeight } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
+import { settleService } from '../logic/reputation';
 import { session } from '../session';
 import { BUTTONS, COLOURS, button, drawPaper, label } from '../ui';
 
@@ -13,7 +14,8 @@ interface RegisterData {
   paidByCash: boolean;
   tendered: number;
   receiptTop: number;
-  onDone: () => void;
+  /** Called with the tip they left. */
+  onDone: (tip: number) => void;
   onBack: () => void;
 }
 
@@ -266,10 +268,10 @@ export class RegisterScene extends Phaser.Scene {
     const result = checkChange(this.total, this.tendered, this.given());
     if (result.status === 'short') return this.reject('NOT ENOUGH CHANGE');
     const extra = result.status === 'over' ? result.extra : 0;
-    completeSale(session.state, this.total, extra);
+    const tip = this.settle(extra);
     sfx.sale();
-    if (extra > 0) this.finish(`OOPS! THAT'S ${formatCents(extra)} TOO MUCH`, 0x9a5b00);
-    else this.finish('PERFECT. THANKS!', SUCCESS_INK);
+    if (extra > 0) this.finish(`OOPS! THAT'S ${formatCents(extra)} TOO MUCH`, 0x9a5b00, tip);
+    else this.finish(tip > 0 ? `A ${formatCents(tip)} TIP!` : 'PERFECT. THANKS!', SUCCESS_INK, tip);
   }
 
   // ---- Card ---------------------------------------------------------------
@@ -330,9 +332,9 @@ export class RegisterScene extends Phaser.Scene {
     if (this.finished) return;
     if (key === 'OK') {
       if (!checkCard(this.total, this.entered)) return this.reject('WRONG AMOUNT');
-      completeSale(session.state, this.total, 0);
+      const tip = this.settle(0);
       sfx.approved();
-      this.finish('APPROVED. THANKS!', SUCCESS_INK);
+      this.finish(tip > 0 ? `A ${formatCents(tip)} TIP!` : 'APPROVED. THANKS!', SUCCESS_INK, tip);
       return;
     }
     this.messageText.setTint(COLOURS.dim).setText(CARD_PROMPT);
@@ -362,7 +364,14 @@ export class RegisterScene extends Phaser.Scene {
     });
   }
 
-  private finish(text: string, color: number) {
+  /** Records the sale, and how the service went. Returns their tip. */
+  private settle(overpaid: number): number {
+    const { tip } = settleService(session.state, this.total, this.info.items.length, session.serviceSeconds, overpaid);
+    completeSale(session.state, this.total, overpaid, tip);
+    return tip;
+  }
+
+  private finish(text: string, color: number, tip: number) {
     this.finished = true;
     // The customer says it, so it appears beside them rather than down by the buttons.
     this.messageText.setText('');
@@ -371,7 +380,7 @@ export class RegisterScene extends Phaser.Scene {
       this.removeTerminal(() => {
         session.sale = null;
         session.modal = false;
-        this.info.onDone();
+        this.info.onDone(tip);
         this.scene.stop();
       });
     });

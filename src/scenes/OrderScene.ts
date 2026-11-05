@@ -2,17 +2,21 @@ import Phaser from 'phaser';
 import { sfx } from '../audio';
 import { BOX_SIZE, PRODUCTS, type Product } from '../data/products';
 import { SHELF_ROW_PRICES } from '../data/shelves';
+import { WEATHER } from '../data/weather';
 import { buyLicence, buyShelfRow, nextRowPrice, unlockedProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
-import { cartCost, placeOrder, type Cart } from '../logic/orders';
+import { cartCost, placeOrder, rushCost, type Cart } from '../logic/orders';
 import { session } from '../session';
-import { BUTTONS, COLOURS, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton } from '../ui';
+import { BUTTONS, COLOURS, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton, secondaryButton } from '../ui';
+
+import type { CelebrationData } from './CelebrationScene';
 
 export type OrderTab = 'snacks' | 'licences' | 'shelves';
 
 const ROW_H = 38;
 const LIST_Y = 54;
-const LIST_H = 232;
+const LIST_H = 198;
+const FOOTER_Y = LIST_Y + LIST_H + 2;
 
 export class OrderScene extends Phaser.Scene {
   private tab: OrderTab = 'snacks';
@@ -54,6 +58,7 @@ export class OrderScene extends Phaser.Scene {
     this.track(label(this, 6, 4, 'ORDER STOCKS', COLOURS.gold));
     this.track(closeButton(this, () => this.close()));
     this.track(label(this, 6, 14, formatCents(state.balance), COLOURS.dim));
+    this.track(label(this, WIDTH - BUTTONS.closeW - 8, 14, `TOMORROW: ${WEATHER[state.forecast].short}`, COLOURS.gold, 'right'));
 
     const tab = (x: number, w: number, id: OrderTab, text: string) =>
       this.track(button(this, x, 27, w, BUTTONS.tabH, text, () => {
@@ -82,10 +87,11 @@ export class OrderScene extends Phaser.Scene {
   private productRow(product: Product, y: number, list: ScrollList) {
     const boxes = (this.cart[product.id] ?? 0) / BOX_SIZE;
     const have = session.state.stockroom[product.id] ?? 0;
+    const coming = (session.state.pendingOrders[product.id] ?? 0) + (session.state.arrivals[product.id] ?? 0);
     list.add(this.add.image(12, y + 17, `item_${product.id}`));
     list.add(label(this, 24, y + 2, product.name));
     list.add(label(this, 24, y + 12, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
-    list.add(label(this, 24, y + 22, `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
+    list.add(label(this, 24, y + 22, coming > 0 ? `HAVE ${have} COMING ${coming}` : `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
     list.addButton(button(this, 132, y + 2, BUTTONS.stepper, BUTTONS.stepper, '-', list.guard(() => this.change(product.id, -BOX_SIZE)), COLOURS.button, null)).setEnabled(boxes > 0);
     list.add(label(this, 170, y + 14, String(boxes), boxes ? COLOURS.gold : COLOURS.dim, 'center'));
     list.addButton(button(this, 178, y + 2, BUTTONS.stepper, BUTTONS.stepper, '+', list.guard(() => this.change(product.id, BOX_SIZE)), COLOURS.button, null));
@@ -106,10 +112,9 @@ export class OrderScene extends Phaser.Scene {
       }
       list.addButton(button(this, WIDTH - BUTTONS.rowW - 6, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), list.guard(() => {
         if (!buyLicence(state, product.id)) return;
-        sfx.unlock();
-        this.notice = `${product.short} UNLOCKED!`;
         if (session.phase === 'morning') session.save();
         this.render();
+        this.celebrate({ kind: 'licence', productId: product.id });
       }, null), COLOURS.button, null)).setEnabled(price <= state.balance);
     });
   }
@@ -129,11 +134,10 @@ export class OrderScene extends Phaser.Scene {
       const isNext = nextRowPrice(state) === price;
       this.track(button(this, WIDTH - BUTTONS.rowW - 4, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), () => {
         if (!buyShelfRow(state)) return;
-        sfx.unlock();
-        this.notice = 'NEW SHELVES ADDED!';
         if (session.phase === 'morning') session.save();
         session.events.emit('shelves-changed');
         this.render();
+        this.celebrate({ kind: 'shelves', row: rowNumber });
       }, COLOURS.button, null)).setEnabled(isNext && price <= state.balance);
     });
   }
@@ -141,13 +145,23 @@ export class OrderScene extends Phaser.Scene {
   private renderFooter() {
     const cost = cartCost(this.cart);
     const canAfford = cost <= session.state.balance;
-    this.track(this.add.rectangle(6, 288, WIDTH - 12, 1, COLOURS.border).setOrigin(0));
-    this.track(label(this, 6, 294, 'TOTAL', COLOURS.dim));
-    this.track(label(this, WIDTH - 6, 294, formatCents(cost), canAfford ? COLOURS.white : COLOURS.red, 'right'));
-    const place = this.track(mainButton(this, 306, 'PLACE ORDER', () => this.submit()));
+    const rush = rushCost(this.cart);
+    this.track(this.add.rectangle(6, FOOTER_Y, WIDTH - 12, 1, COLOURS.border).setOrigin(0));
+    this.track(label(this, 6, FOOTER_Y + 4, 'TOTAL', COLOURS.dim));
+    this.track(label(this, WIDTH - 6, FOOTER_Y + 4, formatCents(cost), canAfford ? COLOURS.white : COLOURS.red, 'right'));
+    const place = this.track(mainButton(this, FOOTER_Y + 15, 'ORDER FOR TOMORROW', () => this.submit(false)));
     place.setEnabled(cost > 0 && canAfford);
+    const rushNow = this.track(secondaryButton(this, FOOTER_Y + 50, cost > 0 ? `RUSH TODAY ${formatCents(rush)}` : 'RUSH TODAY', () => this.submit(true)));
+    rushNow.setEnabled(cost > 0 && rush <= session.state.balance);
     const note = !canAfford ? 'NOT ENOUGH MONEY' : this.notice || `EACH + IS A BOX OF ${BOX_SIZE}`;
-    this.track(label(this, WIDTH / 2, 344, note, !canAfford ? COLOURS.red : this.notice ? COLOURS.green : COLOURS.dim, 'center'));
+    this.track(label(this, WIDTH / 2, FOOTER_Y + 86, note, !canAfford ? COLOURS.red : this.notice ? COLOURS.green : COLOURS.dim, 'center'));
+  }
+
+  /** Stops everything while the player enjoys their new unlock. */
+  private celebrate(data: CelebrationData) {
+    this.scene.launch('Celebration', data);
+    this.scene.pause();
+    this.scene.pause('Shack');
   }
 
   private change(id: string, delta: number) {
@@ -156,13 +170,13 @@ export class OrderScene extends Phaser.Scene {
     this.render();
   }
 
-  private submit() {
-    if (!placeOrder(session.state, this.cart)) return;
+  private submit(rush: boolean) {
+    if (!placeOrder(session.state, this.cart, rush)) return;
     sfx.order();
     this.cart = {};
-    this.notice = 'ORDER PLACED. BOX ON THE WAY';
+    this.notice = rush ? 'RUSH BOX ON THE WAY' : 'ARRIVES TOMORROW MORNING';
     if (session.phase === 'morning') session.save();
-    session.events.emit('order-placed');
+    session.events.emit('order-placed', rush);
     this.render();
   }
 

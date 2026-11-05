@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { audioStatus, unlockAudio } from './audio';
+import { startMusic, musicStatus } from './music';
 import { BootScene } from './scenes/BootScene';
+import { CalendarScene } from './scenes/CalendarScene';
+import { CelebrationScene } from './scenes/CelebrationScene';
+import { GameOverScene } from './scenes/GameOverScene';
 import { InventoryScene } from './scenes/InventoryScene';
 import { OrderScene } from './scenes/OrderScene';
 import { PauseScene } from './scenes/PauseScene';
@@ -35,7 +39,7 @@ const game = new Phaser.Game({
   pixelArt: true,
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE },
-  scene: [BootScene, ShackScene, OrderScene, StockScene, InventoryScene, RegisterScene, SummaryScene, PauseScene],
+  scene: [BootScene, ShackScene, OrderScene, StockScene, InventoryScene, RegisterScene, SummaryScene, CalendarScene, CelebrationScene, GameOverScene, PauseScene],
 });
 
 let rebuildPending = false;
@@ -62,6 +66,7 @@ session.events.on('begin-day', () => {
 });
 
 unlockAudio();
+window.addEventListener('pointerdown', () => startMusic(), { once: true });
 game.events.once(Phaser.Core.Events.READY, () => game.scale.setZoom(L.zoom));
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
@@ -70,5 +75,5 @@ window.addEventListener('resize', () => {
 });
 
 if (import.meta.env.DEV) {
-  Object.assign(window, { __game: game, __session: session, __audio: audioStatus, __layout: L });
+  Object.assign(window, { __game: game, __session: session, __audio: audioStatus, __music: musicStatus, __layout: L });
 }

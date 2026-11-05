@@ -3,7 +3,7 @@ import { L } from '../layout';
 
 type Ctx = CanvasRenderingContext2D;
 
-export const CUSTOMER_LOOKS = 12;
+export { CUSTOMER_LOOKS } from './looks';
 const COLOUR_STRIP = '#1b3346';
 
 const rect = (c: Ctx, color: string, x: number, y: number, w = 1, h = 1) => {
@@ -523,6 +523,113 @@ function drawProps(scene: Phaser.Scene) {
   });
 }
 
+// ---- The TV, the calendar and the sign's stars ----------------------------
+
+export const TV_W = 30;
+export const TV_H = 28;
+export const TV_FRAMES = 4;
+export const CALENDAR_W = 30;
+export const CALENDAR_H = 28;
+const SCREEN_W = 22;
+const SCREEN_H = 14;
+
+function drawCloud(c: Ctx, x: number, y: number, colour: string) {
+  rect(c, colour, x + 1, y + 2, 10, 3);
+  rect(c, colour, x + 3, y, 5, 2);
+  rect(c, colour, x, y + 3, 12, 2);
+}
+
+function drawSun(c: Ctx, cx: number, cy: number, frame: number) {
+  disc(c, '#ffd65c', cx, cy, 3);
+  const rays = frame % 2 === 0 ? [[0, -5], [0, 5], [-5, 0], [5, 0]] : [[-4, -4], [4, -4], [-4, 4], [4, 4]];
+  rays.forEach(([dx, dy]) => rect(c, '#fff0a8', cx + dx, cy + dy));
+}
+
+/** Each picture on the TV is a short loop, chosen by tomorrow's forecast. */
+const SCREENS: Record<string, (c: Ctx, frame: number) => void> = {
+  sunny(c, frame) {
+    rect(c, '#62b6e8', 0, 0, SCREEN_W, SCREEN_H);
+    drawSun(c, 11, 6, frame);
+    rect(c, '#2f8fc4', 0, 12, SCREEN_W, 2);
+    for (let x = frame * 2; x < SCREEN_W; x += 8) rect(c, '#bfe6f7', x, 12, 3, 1);
+  },
+  heatwave(c, frame) {
+    rect(c, '#f08a3c', 0, 0, SCREEN_W, SCREEN_H);
+    rect(c, '#f6b04f', 0, 8, SCREEN_W, 6);
+    disc(c, '#fff0a8', 11, 5, 4);
+    // Heat shimmer rising off the sand
+    for (let row = 0; row < 3; row++) {
+      for (let x = (frame + row) % 4; x < SCREEN_W; x += 4) rect(c, '#ffd65c', x, 9 + row * 2, 2, 1);
+    }
+  },
+  rainy(c, frame) {
+    rect(c, '#55677c', 0, 0, SCREEN_W, SCREEN_H);
+    drawCloud(c, 5, 1, '#c9d3dd');
+    for (let i = 0; i < 6; i++) {
+      const x = 2 + i * 3 + (i % 2);
+      rect(c, '#9fd6f5', x, 7 + ((frame * 2 + i * 3) % 6), 1, 2);
+    }
+  },
+  cloudy(c, frame) {
+    rect(c, '#9db4c6', 0, 0, SCREEN_W, SCREEN_H);
+    drawCloud(c, -2 + frame * 2, 1, '#eef3f6');
+    drawCloud(c, 12 - frame, 7, '#d3dee6');
+  },
+};
+
+function drawInfoBoard(scene: Phaser.Scene) {
+  canvasTexture(scene, 'tv', TV_W, TV_H, (c) => {
+    // Rabbit ears
+    rect(c, '#2c2a33', 10, 0, 1, 2);
+    rect(c, '#2c2a33', 19, 0, 1, 2);
+    rect(c, '#2c2a33', 11, 2, 8, 1);
+    // Case
+    rect(c, '#2c2a33', 0, 3, TV_W, TV_H - 3);
+    rect(c, '#6d4f2b', 1, 4, TV_W - 2, TV_H - 5);
+    rect(c, '#8f6a3b', 1, 4, TV_W - 2, 1);
+    rect(c, '#14100e', 3, 4, SCREEN_W + 2, SCREEN_H + 2);
+  });
+  for (const [id, draw] of Object.entries(SCREENS)) {
+    for (let frame = 0; frame < TV_FRAMES; frame++) {
+      canvasTexture(scene, `tv_${id}_${frame}`, SCREEN_W, SCREEN_H, (c) => draw(c, frame));
+    }
+  }
+
+  canvasTexture(scene, 'calendar', CALENDAR_W, CALENDAR_H, (c) => {
+    rect(c, '#2c2a33', 0, 0, CALENDAR_W, CALENDAR_H);
+    rect(c, '#fbf1d8', 1, 1, CALENDAR_W - 2, CALENDAR_H - 2);
+    rect(c, '#c9503f', 1, 1, CALENDAR_W - 2, 9);
+    rect(c, '#e8604f', 1, 1, CALENDAR_W - 2, 1);
+  });
+
+  const star = (key: string, fill: string, edge: string) =>
+    canvasTexture(scene, key, 7, 7, (c) => {
+      ['...#...', '...#...', '#######', '.#####.', '..###..', '.##.##.', '.#...#.'].forEach((row, y) => {
+        [...row].forEach((px, x) => {
+          if (px === '#') rect(c, y === 2 || x === 3 ? fill : edge, x, y);
+        });
+      });
+    });
+  star('star_on', '#ffd65c', '#f0a93a');
+  star('star_off', '#7a5a38', '#6d4f2b');
+
+  canvasTexture(scene, 'raindrop', 1, 4, (c) => rect(c, '#cfe6f5', 0, 0, 1, 4));
+  canvasTexture(scene, 'pixel_white', 2, 2, (c) => rect(c, '#ffffff', 0, 0, 2, 2));
+
+  // A stretch of new shelf, for the unlock celebration
+  canvasTexture(scene, 'new_shelf', 60, 26, (c) => {
+    rect(c, '#2c2a33', 0, 0, 60, 26);
+    rect(c, '#b98a58', 1, 1, 58, 24);
+    rect(c, '#dcb483', 1, 1, 58, 1);
+    for (let col = 0; col < 4; col++) {
+      rect(c, '#6f4d31', 2 + col * 14 + 1, 3, 12, 15);
+      rect(c, '#8a6240', 2 + col * 14 + 1, 6, 12, 12);
+      rect(c, '#e3bf8e', 2 + col * 14 + 1, 18, 12, 1);
+      rect(c, '#fbf1d8', 2 + col * 14 + 1, 20, 12, 3);
+    }
+  });
+}
+
 export function createTextures(scene: Phaser.Scene): void {
   drawShop(scene);
   drawMoney(scene);
@@ -530,4 +637,5 @@ export function createTextures(scene: Phaser.Scene): void {
   drawCard(scene);
   drawTail(scene);
   drawProducts(scene);
+  drawInfoBoard(scene);
 }

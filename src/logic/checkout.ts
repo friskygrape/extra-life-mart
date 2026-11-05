@@ -15,9 +15,11 @@ export function checkCard(total: number, entered: number): boolean {
   return total === entered;
 }
 
-export function completeSale(state: GameState, total: number, overpaid: number): void {
-  state.balance += total - overpaid;
+export function completeSale(state: GameState, total: number, overpaid: number, tip = 0): void {
+  state.balance += total - overpaid + tip;
   state.stats.revenue += total;
+  state.stats.tips += tip;
   state.stats.overpaid += overpaid;
   state.stats.customersServed += 1;
+  state.totalServed += 1;
 }

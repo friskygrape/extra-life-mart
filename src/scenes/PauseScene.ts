@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { isMuted, sfx, toggleMuted } from '../audio';
 import { L } from '../layout';
+import { isMusicOn, toggleMusic } from '../music';
 import { session } from '../session';
 import { BUTTONS, COLOURS, button, label } from '../ui';
 
@@ -9,6 +10,7 @@ const PADDING = 10;
 const RESTART_RED = 0x9a3b30;
 
 const soundLabel = () => `SOUND: ${isMuted() ? 'OFF' : 'ON'}`;
+const musicLabel = () => `MUSIC: ${isMusicOn() ? 'ON' : 'OFF'}`;
 
 /** Stops the game and shows the menu on top of it. */
 export class PauseScene extends Phaser.Scene {
@@ -55,13 +57,19 @@ export class PauseScene extends Phaser.Scene {
     this.clear();
     const gap = 4;
     const h = BUTTONS.largeH;
-    const { x, y, w } = this.panel(PADDING * 2 + 24 + h * 3 + gap * 2 + 8);
+    const { x, y, w } = this.panel(PADDING * 2 + 24 + h * 4 + gap * 3 + 8);
     this.track(label(this, Math.floor(L.W / 2), y + 2, 'PAUSE', COLOURS.gold, 'center').setScale(2));
 
     let rowY = y + 24;
     const sound = this.track(button(this, x, rowY, w, h, soundLabel(), () => {
       toggleMuted();
       sound.setLabel(soundLabel());
+      sfx.click();
+    }, COLOURS.button, null));
+    rowY += h + gap;
+    const music = this.track(button(this, x, rowY, w, h, musicLabel(), () => {
+      toggleMusic();
+      music.setLabel(musicLabel());
       sfx.click();
     }, COLOURS.button, null));
     rowY += h + gap;

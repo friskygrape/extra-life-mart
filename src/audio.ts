@@ -28,7 +28,7 @@ export function toggleMuted(): boolean {
   return muted;
 }
 
-function context(): AudioContext | null {
+export function context(): AudioContext | null {
   if (!ctx) {
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
@@ -138,6 +138,12 @@ export const sfx = {
   rip: sound(() => noise(0.22, { freq: 2600, vol: 0.09 })),
   pop: sound(() => tone(620, 0.06, { slideTo: 940, vol: 0.03 })),
   stored: sound(() => tone(200, 0.1, { type: 'triangle', slideTo: 120, vol: 0.09 })),
+  fanfare: sound(() => {
+    [523, 659, 784, 1047].forEach((freq, i) => tone(freq, 0.14, { vol: 0.05, at: i * 0.11 }));
+    tone(1319, 0.5, { vol: 0.05, at: 0.44 });
+    tone(784, 0.5, { type: 'triangle', vol: 0.07, at: 0.44 });
+    noise(0.25, { freq: 5000, vol: 0.02, at: 0.44 });
+  }),
   order: sound(() => {
     tone(660, 0.06, { vol: 0.04 });
     tone(880, 0.1, { vol: 0.04, at: 0.07 });

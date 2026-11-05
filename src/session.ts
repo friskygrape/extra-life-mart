@@ -37,6 +37,8 @@ class Session {
   readonly dayLength = dayLengthSeconds();
   waiting = 0;
   wants: string[] | null = null;
+  /** Seconds the current customer has been waiting on you, which sets their tip. */
+  serviceSeconds = 0;
   payingCash = false;
   table: string[] = [];
   sale: ActiveSale | null = null;

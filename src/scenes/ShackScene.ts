@@ -1,12 +1,19 @@
 import Phaser from 'phaser';
 import { getProduct, shelfLabelLines } from '../data/products';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
-import { CUSTOMER_LOOKS, SHELF_LABEL_H, columnX } from '../art/textures';
+import { REGULARS } from '../data/regulars';
+import { CALENDAR_W, CUSTOMER_LOOKS, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_W, columnX } from '../art/textures';
 import { sfx } from '../audio';
+import { setMusicMood } from '../music';
+import { WEATHER, type WeatherId } from '../data/weather';
+import { eventOnDay } from '../data/events';
+import { pickGreeting } from '../logic/dialogue';
+import { isRentDay, weekOf, weekdayIndex, weekdayName } from '../logic/calendar';
+import { EMPTY_SHELVES_POINTS, MAX_STARS, MISSED_SALE_POINTS, SLOW_TIMES, changeReputation, greatServiceSeconds, stars } from '../logic/reputation';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
 import { lightingAt } from '../logic/clock';
-import { buildRequest, chooseCash, emptyShelfComment, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
-import { endDay } from '../logic/day';
+import { buildRequest, chooseCash, emptyShelfComment, idleWait, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
+import { endDay, nothingToSell } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { nextRowPrice } from '../logic/licences';
 import { customerTender, formatCents, roundToNickel } from '../logic/money';
@@ -36,6 +43,23 @@ const SCENE_H = 267;
 /** A short beat after the last item lands, so you can see the order complete. */
 const PAYMENT_DELAY_MS = 350;
 const EMPTY_HANDED_MS = 2600;
+/** Long enough to read what they say, however much that is. Tapping moves on sooner. */
+const greetingMs = (text: string) => Math.min(3000, 1100 + text.length * 30);
+/** How many of their lines to remember, so they don't repeat themselves straight away. */
+const RECENT_LINES = 30;
+const NAME_INK = 0x9a5b00;
+/** Where the calendar and TV hang, clear of the menu button, the bubble and the receipt. */
+const wallY = () => L.hudH + 8;
+const TIP_BAR_W = 40;
+const RAIN_DROPS = 36;
+const TV_FRAME_MS = 420;
+const RENT_RED = 0xc9503f;
+const WEATHER_TINT: Record<WeatherId, { colour: number; alpha: number }> = {
+  sunny: { colour: 0xffffff, alpha: 0 },
+  heatwave: { colour: 0xff9a30, alpha: 0.16 },
+  rainy: { colour: 0x3f5068, alpha: 0.42 },
+  cloudy: { colour: 0x8a99a8, alpha: 0.3 },
+};
 
 const tableItemX = (i: number) => 88 + i * 21;
 const tableY = () => L.counterTop + 21;
@@ -63,6 +87,9 @@ interface Waiting {
 }
 
 interface Customer extends Omit<Waiting, 'shadow'> {
+  name: string;
+  /** What they say first. Their order shows once this is cleared. */
+  greeting: string | null;
   wants: string[];
   wished: string[];
   /** Keeps their cash the same if you back out of payment and return with the same total. */
@@ -111,6 +138,17 @@ export class ShackScene extends Phaser.Scene {
   private box: Phaser.GameObjects.Image | null = null;
   private boxOpening = false;
   private deliveryIn = 0;
+  private weatherTint!: Phaser.GameObjects.Rectangle;
+  private rain: Phaser.GameObjects.Image[] = [];
+  private tvScreen!: Phaser.GameObjects.Image;
+  private tvFrame = 0;
+  private calendarDay!: Phaser.GameObjects.BitmapText;
+  private calendarWeek!: Phaser.GameObjects.BitmapText;
+  private calendarDots: Phaser.GameObjects.Rectangle[] = [];
+  private starIcons: Phaser.GameObjects.Image[] = [];
+  private tipBar!: Phaser.GameObjects.Rectangle;
+  private tipBarBack!: Phaser.GameObjects.Rectangle;
+  private recentLines: string[] = [];
 
   constructor() {
     super('Shack');
@@ -135,7 +173,9 @@ export class ShackScene extends Phaser.Scene {
     // The closed sign is a shortcut for opening up.
     this.add.rectangle(windowX, windowY, windowW, windowH, 0xffffff, 0).setOrigin(0).setDepth(3.6).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
-        if (session.phase === 'morning' && !session.modal) this.openShop();
+        if (session.modal) return;
+        if (session.phase === 'morning') this.openShop();
+        else this.skipGreeting();
       });
 
     const standBottom = L.counterBottom - 6;
@@ -152,7 +192,11 @@ export class ShackScene extends Phaser.Scene {
     this.bubbleTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
     this.speech = this.add.graphics().setDepth(5).setVisible(false);
     this.speechTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
-    label(this, windowX + Math.floor(windowW / 2), L.signY + 7, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
+    label(this, windowX + Math.floor(windowW / 2), L.signY + 2, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
+    this.buildStars();
+    this.buildWeather();
+    this.buildTv();
+    this.buildCalendar();
     this.heldMoney = this.add.image(propX(), propY(), 'held_cash').setDepth(5.1).setVisible(false);
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
@@ -189,10 +233,125 @@ export class ShackScene extends Phaser.Scene {
     session.events.on('shelves-changed', this.refreshShelves, this);
     session.events.on('begin-day', this.beginDay, this);
     session.events.on('say', this.say, this);
-    session.events.on('order-placed', () => {
-      this.deliveryIn = DELIVERY_SECONDS;
+    session.events.on('order-placed', (rush: boolean) => {
+      if (rush) this.deliveryIn = DELIVERY_SECONDS;
     });
     this.beginDay();
+    // A game that ended stays ended, even after a refresh.
+    if (session.state.closed) {
+      session.modal = true;
+      this.scene.launch('GameOver');
+    }
+  }
+
+  // ---- The sign, the TV, the calendar and the weather ---------------------
+
+  private buildStars() {
+    const gap = 8;
+    const left = L.windowX + Math.floor(L.windowW / 2) - Math.floor((gap * MAX_STARS - 1) / 2);
+    for (let i = 0; i < MAX_STARS; i++) {
+      this.starIcons.push(this.add.image(left + i * gap, L.signY + 11, 'star_off').setOrigin(0).setDepth(5));
+    }
+  }
+
+  private buildWeather() {
+    const { windowX, windowY, windowW, windowH } = L;
+    this.weatherTint = this.add.rectangle(windowX, windowY, windowW, windowH, 0xffffff, 0).setOrigin(0).setDepth(0.5);
+    for (let i = 0; i < RAIN_DROPS; i++) {
+      const drop = this.add.image(windowX + Math.random() * windowW, windowY + Math.random() * windowH, 'raindrop')
+        .setDepth(2.5).setAlpha(0.7).setVisible(false);
+      this.rain.push(drop);
+    }
+    this.tipBarBack = this.add.rectangle(portraitX() - TIP_BAR_W / 2, L.counterTop - 4, TIP_BAR_W, 3, 0x2c2a33).setOrigin(0).setDepth(5.05).setVisible(false);
+    this.tipBar = this.add.rectangle(portraitX() - TIP_BAR_W / 2 + 1, L.counterTop - 3, TIP_BAR_W - 2, 1, COLOURS.green).setOrigin(0).setDepth(5.06).setVisible(false);
+  }
+
+  private buildTv() {
+    const x = L.W - TV_W - 1;
+    const y = wallY();
+    this.add.image(x, y, 'tv').setOrigin(0).setDepth(4.5);
+    this.tvScreen = this.add.image(x + 4, y + 5, 'tv_sunny_0').setOrigin(0).setDepth(4.55);
+    label(this, x + Math.floor(TV_W / 2), y + TV_H - 8, 'TMRW', COLOURS.white, 'center').setDepth(4.6);
+    this.time.addEvent({
+      delay: TV_FRAME_MS,
+      loop: true,
+      callback: () => {
+        this.tvFrame = (this.tvFrame + 1) % TV_FRAMES;
+        this.tvScreen.setTexture(`tv_${session.state.forecast}_${this.tvFrame}`);
+      },
+    });
+    this.add.rectangle(x, y, TV_W, TV_H, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        if (session.modal) return;
+        sfx.click();
+        session.toast(`TOMORROW: ${WEATHER[session.state.forecast].short}`);
+      });
+  }
+
+  private buildCalendar() {
+    const x = 1;
+    const y = wallY();
+    const centre = x + Math.floor(CALENDAR_W / 2);
+    this.add.image(x, y, 'calendar').setOrigin(0).setDepth(4.5);
+    this.calendarDay = label(this, centre, y + 2, '', COLOURS.white, 'center').setDepth(4.6);
+    this.calendarWeek = label(this, centre, y + 11, '', COLOURS.ink, 'center').setDepth(4.6);
+    for (let i = 0; i < 7; i++) {
+      this.calendarDots.push(this.add.rectangle(x + 2 + i * 4, y + 22, 2, 3, COLOURS.ink).setOrigin(0).setDepth(4.6));
+    }
+    this.add.rectangle(x, y, CALENDAR_W, 28, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => this.openModal('Calendar'));
+  }
+
+  private refreshInfoBoard() {
+    const { day, weather, forecast, rentBehind } = session.state;
+    this.calendarDay.setText(weekdayName(day));
+    this.calendarWeek.setText(weekOf(day) < 10 ? `WK ${weekOf(day)}` : `WK${weekOf(day)}`).setTint(rentBehind > 0 ? RENT_RED : COLOURS.ink);
+    const today = weekdayIndex(day);
+    const monday = day - today;
+    this.calendarDots.forEach((dot, i) => {
+      const date = monday + i;
+      const colour = isRentDay(date) ? RENT_RED : eventOnDay(date) ? 0x2f8fc4 : COLOURS.ink;
+      dot.setFillStyle(colour, i < today ? 0.25 : 1).setSize(2, i === today ? 5 : 3).setY(wallY() + (i === today ? 20 : 22));
+    });
+    this.tvScreen.setTexture(`tv_${forecast}_${this.tvFrame}`);
+    const tint = WEATHER_TINT[weather];
+    this.weatherTint.setFillStyle(tint.colour, tint.alpha);
+    this.rain.forEach((drop) => drop.setVisible(weather === 'rainy'));
+    this.refreshStars();
+  }
+
+  private refreshStars() {
+    const earned = stars(session.state);
+    this.starIcons.forEach((icon, i) => {
+      const key = i < earned ? 'star_on' : 'star_off';
+      if (icon.texture.key !== key) icon.setTexture(key);
+    });
+  }
+
+  private updateRain(dt: number) {
+    if (session.state.weather !== 'rainy') return;
+    const { windowX, windowY, windowW, windowH } = L;
+    for (const drop of this.rain) {
+      drop.y += dt * 170;
+      drop.x -= dt * 26;
+      if (drop.y > windowY + windowH) drop.y = windowY - 4;
+      if (drop.x < windowX) drop.x = windowX + windowW;
+      drop.setPosition(Math.round(drop.x), drop.y);
+    }
+  }
+
+  /** A slim bar under the customer: what's left of their tip. */
+  private updateTipBar(dt: number) {
+    const customer = this.current;
+    const serving = customer !== null && !this.busy && customer.greeting === null && customer.wants.length > 0;
+    this.tipBar.setVisible(serving);
+    this.tipBarBack.setVisible(serving);
+    if (!serving) return;
+    session.serviceSeconds += dt;
+    const limit = greatServiceSeconds(customer.wants.length) * SLOW_TIMES;
+    const left = Math.max(0, 1 - session.serviceSeconds / limit);
+    this.tipBar.setSize(Math.max(0, Math.round((TIP_BAR_W - 2) * left)), 1);
+    this.tipBar.setFillStyle(left > 0.6 ? 0x35c46f : left > 0.3 ? COLOURS.gold : COLOURS.red);
   }
 
   private beginDay() {
@@ -211,7 +370,14 @@ export class ShackScene extends Phaser.Scene {
     this.portrait.setX(-PORTRAIT_OFFSCREEN);
     this.shutter.setY(L.windowY);
     this.closedSign.setVisible(true);
+    this.refreshInfoBoard();
     this.refreshShelves();
+    if (performance.now() >= session.messageUntil) session.toast(this.todayMessage(), 3500);
+  }
+
+  private todayMessage(): string {
+    const event = eventOnDay(session.state.day);
+    return event ? `TODAY: ${event.name}!` : `TODAY: ${WEATHER[session.state.weather].short}`;
   }
 
   // ---- Shelves and table --------------------------------------------------
@@ -270,6 +436,7 @@ export class ShackScene extends Phaser.Scene {
     if (session.modal) return;
     if (slot.row >= session.state.rowsOwned) return this.openModal('Order', { tab: 'shelves' });
     const shelf = session.state.shelves.find((s) => s.id === slot.id)!;
+    if (this.current?.greeting) return this.skipGreeting();
     if (shelf.qty > 0 && this.current && !this.busy) return this.fetch(slot, shelf.productId!);
     this.openModal('Stock', { shelfId: slot.id });
   }
@@ -329,16 +496,16 @@ export class ShackScene extends Phaser.Scene {
 
   // ---- Deliveries ---------------------------------------------------------
 
-  private hasPendingOrder(): boolean {
-    return Object.values(session.state.pendingOrders).some((qty) => qty > 0);
+  private hasArrivals(): boolean {
+    return Object.values(session.state.arrivals).some((qty) => qty > 0);
   }
 
   private tickDelivery(dt: number) {
-    if (this.box && !this.boxOpening && !this.hasPendingOrder()) {
+    if (this.box && !this.boxOpening && !this.hasArrivals()) {
       this.box.destroy();
       this.box = null;
     }
-    if (this.box || !this.hasPendingOrder()) return;
+    if (this.box || !this.hasArrivals()) return;
     this.deliveryIn -= dt;
     // Boxes never land mid-sale: they wait until the current customer has been dealt with.
     if (this.deliveryIn <= 0 && !this.current && !session.modal) this.dropBox();
@@ -372,7 +539,7 @@ export class ShackScene extends Phaser.Scene {
     sfx.rip();
 
     // One icon per box of stock would be too few to see, so show them unit by unit, up to a limit.
-    const items = Object.entries(session.state.pendingOrders).flatMap(([id, qty]) => Array.from({ length: qty }, () => id));
+    const items = Object.entries(session.state.arrivals).flatMap(([id, qty]) => Array.from({ length: qty }, () => id));
     const step = Math.max(1, Math.floor(items.length / MAX_FLYING_ITEMS));
     const shown = items.filter((_, i) => i % step === 0).slice(0, MAX_FLYING_ITEMS);
     shown.forEach((id, i) => {
@@ -422,8 +589,14 @@ export class ShackScene extends Phaser.Scene {
     const next = this.queue.shift();
     if (!next) return;
     const request = buildRequest(session.state);
-    const customer: Customer = { look: next.look, paidByCash: next.paidByCash, ...request };
+    const greeting = request.wants.length > 0 ? pickGreeting(session.state, next.look, this.recentLines) : null;
+    const customer: Customer = { look: next.look, paidByCash: next.paidByCash, name: REGULARS[next.look].name, greeting, ...request };
+    if (greeting) this.recentLines = [greeting, ...this.recentLines].slice(0, RECENT_LINES);
     this.current = customer;
+    session.serviceSeconds = 0;
+    if (request.wants.length === 0) changeReputation(session.state, EMPTY_SHELVES_POINTS);
+    else if (request.wished.length > 0) changeReputation(session.state, MISSED_SALE_POINTS);
+    this.refreshStars();
     this.busy = true;
     this.spoken = '';
     this.readyToPay = false;
@@ -461,9 +634,20 @@ export class ShackScene extends Phaser.Scene {
           this.time.delayedCall(EMPTY_HANDED_MS, () => {
             if (this.current === customer) this.dismiss();
           });
+        } else if (customer.greeting) {
+          this.time.delayedCall(greetingMs(customer.greeting), () => {
+            if (this.current === customer) this.skipGreeting();
+          });
         }
       },
     });
+  }
+
+  /** They've finished saying hello: on to what they want. */
+  private skipGreeting() {
+    if (!this.current?.greeting) return;
+    this.current.greeting = null;
+    this.renderBubble();
   }
 
   /** Someone new joins the back of the line, walking in from the right. */
@@ -534,7 +718,7 @@ export class ShackScene extends Phaser.Scene {
     this.bubbleLines = [];
     const customer = this.current;
     const visible = customer !== null && !this.busy;
-    const hasList = visible && customer.wants.length > 0 && this.receiptLines === null;
+    const hasList = visible && customer.wants.length > 0 && customer.greeting === null && this.receiptLines === null;
     this.bubble.setVisible(hasList);
     this.bubbleTail.setVisible(hasList);
     this.speech.setVisible(false);
@@ -553,9 +737,20 @@ export class ShackScene extends Phaser.Scene {
       tail.setPosition(bubbleX() + 1, bottom - 2).setVisible(true);
     };
 
+    // First they say hello, with their name at the top
+    if (customer.greeting !== null) {
+      const top = bubbleY();
+      put(top + 3, customer.name, NAME_INK);
+      const said = put(top + 13, customer.greeting, COLOURS.ink);
+      place(this.speech, this.speechTail, top, top + 13 + said.height + 2);
+      return;
+    }
+
     // The list: finished lines become a solid green row with a check mark
     let y = this.receiptLines === null ? bubbleY() + 3 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 10;
     if (hasList) {
+      put(y, customer.name, NAME_INK);
+      y += 11;
       requestLines(customer.wants, session.table).forEach((line) => {
         const name = getProduct(line.productId).name;
         if (line.done) {
@@ -581,7 +776,9 @@ export class ShackScene extends Phaser.Scene {
 
   private pressAction() {
     if (session.modal) return;
-    if (session.phase === 'morning') return this.openShop();
+    if (session.phase === 'morning') {
+      return nothingToSell(session.state) ? this.skipDay() : this.openShop();
+    }
     if (this.readyToPay) this.startPayment();
   }
 
@@ -604,11 +801,12 @@ export class ShackScene extends Phaser.Scene {
       total: charged,
       paidByCash: customer.paidByCash,
       tendered: customer.paidByCash ? customer.tender.amount : 0,
-      onDone: () => {
+      onDone: (tip: number) => {
         this.setDeskClear(false);
         this.clearTable();
         this.dismiss();
-        this.floatMoney(charged);
+        this.floatMoney(charged + tip);
+        this.refreshStars();
       },
       onBack: () => {
         this.setDeskClear(false);
@@ -633,7 +831,7 @@ export class ShackScene extends Phaser.Scene {
   private openShop() {
     if (!anyShelfStocked(session.state)) {
       sfx.error();
-      session.toast('STOCK YOUR SHELVES BEFORE OPENING', 3000);
+      session.toast(nothingToSell(session.state) ? 'NOTHING TO SELL TODAY' : 'STOCK YOUR SHELVES BEFORE OPENING', 3000);
       return;
     }
     session.phase = 'open';
@@ -644,6 +842,12 @@ export class ShackScene extends Phaser.Scene {
     sfx.shutter();
     this.closedSign.setVisible(false);
     this.tweens.add({ targets: this.shutter, y: L.windowY - L.windowH, duration: 600, ease: 'Quad.easeIn' });
+  }
+
+  /** With nothing to sell, the only way forward is tomorrow's delivery. */
+  private skipDay() {
+    sfx.click();
+    this.closeBooks();
   }
 
   private openModal(scene: string, data?: object) {
@@ -660,12 +864,12 @@ export class ShackScene extends Phaser.Scene {
     if (session.phase === 'open') {
       session.clock += dt;
       const idle = !this.current && !this.busy && this.queue.length === 0;
-      this.spawnIn = shortenWhenIdle(this.spawnIn, idle) - dt;
+      this.spawnIn = shortenWhenIdle(this.spawnIn, idle, idleWait(session.state)) - dt;
       if (this.spawnIn <= 0) {
         if (this.queue.length < MAX_WAITING) {
           this.joinLine();
         }
-        this.spawnIn = nextSpawnDelay(session.state.day);
+        this.spawnIn = nextSpawnDelay(session.state);
       }
       if (session.clock >= session.dayLength) {
         session.phase = 'closing';
@@ -679,6 +883,8 @@ export class ShackScene extends Phaser.Scene {
       }
     }
     this.tickDelivery(dt);
+    this.updateRain(dt);
+    this.updateTipBar(dt);
     this.applyLighting();
     session.waiting = this.queue.length;
     this.updateLine(dt);
@@ -694,6 +900,7 @@ export class ShackScene extends Phaser.Scene {
     const tint = mixColour(mixColour(0xffffff, 0xffe2cc, dusk), 0xbcc4e2, night);
     this.portrait.setTint(tint);
     this.warmLight.setFillStyle(0xffa050, 0.1 * Math.max(dusk * 0.5, night));
+    setMusicMood(session.phase === 'morning' ? 'morning' : dusk > 0 ? 'evening' : 'day');
   }
 
   private updateHud() {
@@ -705,7 +912,7 @@ export class ShackScene extends Phaser.Scene {
 
     const showAction = phase === 'morning' || (this.readyToPay && this.current !== null);
     this.action.setVisible(showAction);
-    this.action.setLabel(phase === 'morning' ? 'OPEN' : 'TAKE PAYMENT');
+    this.action.setLabel(phase === 'morning' ? (nothingToSell(state) ? 'SKIP DAY' : 'OPEN') : 'TAKE PAYMENT');
     this.hint.setText(this.hintText());
   }
 
@@ -714,10 +921,12 @@ export class ShackScene extends Phaser.Scene {
     const { state, phase, waiting } = session;
     if (this.box && !this.boxOpening) return 'TAP THE BOX TO UNPACK IT';
     if (phase === 'morning') {
+      if (nothingToSell(state)) return 'NOTHING TO SELL. ORDER MORE';
       return anyShelfStocked(state) ? 'ORDER MORE OR OPEN UP' : 'TAP AN EMPTY SHELF TO STOCK IT';
     }
     if (this.current) {
       if (this.current.wants.length === 0) return 'YOUR SHELVES ARE EMPTY!';
+      if (this.current.greeting) return 'TAP TO SEE THEIR ORDER';
       return this.readyToPay ? 'TAP A TABLE ITEM TO CHANGE IT' : 'TAP SHELVES TO FETCH ITEMS';
     }
     if (phase === 'closing') return waiting ? 'LAST CUSTOMERS' : 'CLOSING UP';

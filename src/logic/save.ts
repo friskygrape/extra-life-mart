@@ -1,6 +1,10 @@
-import { SAVE_VERSION, type GameState } from './state';
+import { rollWeather } from '../data/weather';
+import { weekdayIndex } from './calendar';
+import { START_REPUTATION } from './reputation';
+import { SAVE_VERSION, type DayStats, type GameState } from './state';
 
 const SAVE_KEY = 'extra-life-mart-save';
+const FIRST_VERSION_WITH_MIGRATION = 4;
 
 export type SaveStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -12,13 +16,35 @@ export function saveGame(state: GameState, store: SaveStore): void {
   }
 }
 
-/** Returns null when there's no save, or it's unreadable or from another version. */
+/**
+ * Brings a version 4 save up to date. Orders already on their way arrive straight away, as they did
+ * then, and the day moves back to that week's Monday, so there's a full week before the first rent.
+ */
+function fromVersion4(old: GameState): GameState {
+  return {
+    ...old,
+    version: SAVE_VERSION,
+    day: old.day - weekdayIndex(old.day),
+    arrivals: { ...old.pendingOrders },
+    pendingOrders: {},
+    stats: { ...old.stats, tips: 0 } as DayStats,
+    weather: 'sunny',
+    forecast: rollWeather('sunny'),
+    reputation: START_REPUTATION,
+    rentBehind: 0,
+    closed: false,
+    totalServed: 0,
+  };
+}
+
+/** Returns null when there's no save, or it's unreadable or from a version we can't convert. */
 export function loadGame(store: SaveStore): GameState | null {
   try {
     const raw = store.getItem(SAVE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as GameState;
-    return parsed.version === SAVE_VERSION ? parsed : null;
+    if (parsed.version === SAVE_VERSION) return parsed;
+    return parsed.version === FIRST_VERSION_WITH_MIGRATION ? fromVersion4(parsed) : null;
   } catch {
     return null;
   }
