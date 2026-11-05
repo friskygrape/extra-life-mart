@@ -5,20 +5,26 @@ import { CUSTOMER_LOOKS, columnX } from '../art/textures';
 import { isMuted, sfx, toggleMuted } from '../audio';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
 import { lightingAt } from '../logic/clock';
-import { buildRequest, chooseCash, nextSpawnDelay, shortenWhenIdle } from '../logic/customers';
+import { buildRequest, chooseCash, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
 import { endDay } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { nextRowPrice } from '../logic/licences';
 import { customerTender, formatCents, roundToNickel } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
-import { L } from '../layout';
+import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
 import { session } from '../session';
-import { Button, COLOURS, button, label } from '../ui';
+import { BUTTONS, Button, COLOURS, button, label } from '../ui';
 
-const TABLE_CAPACITY = 5;
+const TABLE_CAPACITY = 4;
 const DELIVERY_SECONDS = 3;
 const MAX_FLYING_ITEMS = 14;
-const MAX_WAITING = 4;
+const MAX_WAITING = 3;
+const SHADOW_COLOUR = 0x24344a;
+const SHADOW_SPACING = 32;
+const SHADOW_SCALE = 0.94;
+/** Each person further back in line is fainter. */
+const SHADOW_ALPHAS = [0.8, 0.5, 0.3];
+const STEP_FORWARD_MS = 520;
 const COMPLAINT = 0xb0352b;
 const PORTRAIT_OFFSCREEN = 90;
 const DONE_GREEN = 0x1f8f55;
@@ -31,13 +37,12 @@ const SCENE_H = 267;
 const PAYMENT_DELAY_MS = 350;
 const EMPTY_HANDED_MS = 1900;
 
-const tableItemX = (i: number) => 52 + i * 21;
+const tableItemX = (i: number) => 88 + i * 21;
 const tableY = () => L.counterTop + 21;
-const propX = () => L.W - 74;
-const portraitX = () => L.windowX + 43;
-const bubbleX = () => portraitX() + 27;
-const bubbleY = () => L.windowY + 8;
-const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
+/** Cash or card lands right beside the register, in front of the customer. */
+const propX = () => 62;
+const propY = () => L.counterTop + 16;
+const boxX = () => L.W - 74;
 const slotLeft = (slot: ShelfSlot) => columnX(slot.col);
 const slotWidth = (slot: ShelfSlot) => columnX(slot.col + 1) - columnX(slot.col);
 const slotTop = (slot: ShelfSlot) => L.shelfTop + slot.row * L.rowH;
@@ -53,9 +58,11 @@ function mixColour(a: number, b: number, t: number): number {
 interface Waiting {
   look: number;
   paidByCash: boolean;
+  /** Their dark outline, standing behind whoever is ahead of them. */
+  shadow: Phaser.GameObjects.Image;
 }
 
-interface Customer extends Waiting {
+interface Customer extends Omit<Waiting, 'shadow'> {
   wants: string[];
   wished: string[];
   /** Keeps their cash the same if you back out of payment and return with the same total. */
@@ -85,7 +92,8 @@ export class ShackScene extends Phaser.Scene {
   private spokenColour: number = COLOURS.ink;
   private slotArt = new Map<string, Phaser.GameObjects.GameObject[]>();
   private rowArt: Phaser.GameObjects.GameObject[] = [];
-  private waitingArt: Phaser.GameObjects.Image[] = [];
+  /** While paying, the receipt replaces the list: how many lines it has. */
+  private receiptLines: number | null = null;
   private table: TableItem[] = [];
   private queue: Waiting[] = [];
   private current: Customer | null = null;
@@ -118,9 +126,6 @@ export class ShackScene extends Phaser.Scene {
     this.add.image(sceneX, sceneY, 'beach').setOrigin(0).setDepth(0);
     this.duskScene = this.add.image(sceneX, sceneY, 'beach_dusk').setOrigin(0).setDepth(0.1).setAlpha(0);
     this.nightScene = this.add.image(sceneX, sceneY, 'beach_night').setOrigin(0).setDepth(0.2).setAlpha(0);
-    this.waitingArt = [0, 1, 2, 3].map((i) =>
-      this.add.image(windowX + windowW - 14 - i * 12, windowY + windowH - 30 + (i % 2) * 2, `walker_${i % 2}`).setOrigin(0).setDepth(1).setVisible(false),
-    );
     this.portrait = this.add.image(-PORTRAIT_OFFSCREEN, windowY + windowH, 'cust_0').setOrigin(0.5, 1).setDepth(2);
     this.shutter = this.add.image(windowX, windowY, 'shutter').setOrigin(0).setDepth(3);
     this.closedSign = label(this, windowX + Math.floor(windowW / 2), windowY + Math.floor(windowH / 2) - 4, 'CLOSED', COLOURS.white, 'center').setDepth(3.5);
@@ -142,8 +147,8 @@ export class ShackScene extends Phaser.Scene {
     this.speech = this.add.rectangle(0, 0, 10, 10, COLOURS.paper).setOrigin(0).setStrokeStyle(1, COLOURS.ink).setDepth(5).setVisible(false);
     this.speechTail = this.add.triangle(0, 0, 0, 0, 0, 7, -6, 7, COLOURS.paper).setOrigin(0).setDepth(5).setVisible(false);
     label(this, windowX + Math.floor(windowW / 2), L.signY + 7, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
-    this.heldMoney = this.add.image(propX(), tableY(), 'held_cash').setDepth(5.1).setVisible(false);
-    this.heldCard = this.add.image(propX(), tableY(), 'held_card').setDepth(5.1).setVisible(false);
+    this.heldMoney = this.add.image(propX(), propY(), 'held_cash').setDepth(5.1).setVisible(false);
+    this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
     this.add.rectangle(0, 0, W, L.hudH, COLOURS.bg).setOrigin(0).setDepth(6);
     const hudText = L.hudH - 11;
@@ -168,7 +173,7 @@ export class ShackScene extends Phaser.Scene {
         this.soundIcon.setTexture(toggleMuted() ? 'sound_off' : 'sound_on');
         sfx.click();
       });
-    this.action = button(this, W - 82, L.stripTop + 4, 78, 25, 'OPEN', () => this.pressAction(), COLOURS.accent, null);
+    this.action = button(this, W - BUTTONS.stripW - 4, L.stripTop + 3, BUTTONS.stripW, BUTTONS.stripH, 'OPEN', () => this.pressAction(), COLOURS.accent, null);
     this.action.rect.setDepth(7);
     this.action.text.setDepth(8);
 
@@ -186,10 +191,12 @@ export class ShackScene extends Phaser.Scene {
     session.clock = 0;
     session.modal = false;
     this.deliveryIn = 1;
+    this.queue.forEach((w) => w.shadow.destroy());
     this.queue = [];
     this.current = null;
     this.busy = false;
     this.readyToPay = false;
+    this.receiptLines = null;
     this.hidePayment();
     this.clearTable();
     this.portrait.setX(-PORTRAIT_OFFSCREEN);
@@ -328,7 +335,7 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private dropBox() {
-    const box = this.add.image(propX(), tableY() - 44, 'box_closed').setDepth(4.8);
+    const box = this.add.image(boxX(), tableY() - 44, 'box_closed').setDepth(4.8);
     this.box = box;
     box.setInteractive({ useHandCursor: true }).on('pointerup', () => this.openBox());
     this.tweens.add({
@@ -351,7 +358,7 @@ export class ShackScene extends Phaser.Scene {
     if (!box || session.modal || this.boxOpening) return;
     this.boxOpening = true;
     this.tweens.killTweensOf(box);
-    box.setPosition(propX(), tableY()).setTexture('box_open').disableInteractive();
+    box.setPosition(boxX(), tableY()).setTexture('box_open').disableInteractive();
     sfx.rip();
 
     // One icon per box of stock would be too few to see, so show them unit by unit, up to a limit.
@@ -361,11 +368,11 @@ export class ShackScene extends Phaser.Scene {
     shown.forEach((id, i) => {
       this.time.delayedCall(180 + i * 90, () => {
         sfx.pop();
-        const icon = this.add.image(propX(), tableY() - 4, `item_${id}`).setDepth(10).setScale(0.5);
+        const icon = this.add.image(boxX(), tableY() - 4, `item_${id}`).setDepth(10).setScale(0.5);
         this.tweens.add({
           targets: icon,
           y: tableY() - 30,
-          x: propX() - 6 + (i % 3) * 6,
+          x: boxX() - 6 + (i % 3) * 6,
           scale: 1,
           duration: 180,
           ease: 'Quad.easeOut',
@@ -400,11 +407,12 @@ export class ShackScene extends Phaser.Scene {
 
   // ---- Customers ----------------------------------------------------------
 
+  /** The next person in line steps forward, turning from a silhouette into full colour. */
   private callNext() {
     const next = this.queue.shift();
     if (!next) return;
     const request = buildRequest(session.state);
-    const customer: Customer = { ...next, ...request };
+    const customer: Customer = { look: next.look, paidByCash: next.paidByCash, ...request };
     this.current = customer;
     this.busy = true;
     this.spoken = '';
@@ -413,11 +421,22 @@ export class ShackScene extends Phaser.Scene {
     session.payingCash = customer.paidByCash;
     session.state.stats.missedSales += customer.wished.length;
     sfx.customer();
-    this.portrait.setTexture(`cust_${next.look}`).setX(-PORTRAIT_OFFSCREEN);
+    const { shadow } = next;
+    this.portrait.setTexture(`cust_${next.look}`).setX(shadow.x).setAlpha(0);
+    this.tweens.add({
+      targets: shadow,
+      x: portraitX(),
+      scale: 1,
+      alpha: 0,
+      duration: STEP_FORWARD_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => shadow.destroy(),
+    });
     this.tweens.add({
       targets: this.portrait,
       x: portraitX(),
-      duration: 450,
+      alpha: 1,
+      duration: STEP_FORWARD_MS,
       ease: 'Quad.easeOut',
       onComplete: () => {
         this.busy = false;
@@ -433,14 +452,32 @@ export class ShackScene extends Phaser.Scene {
     });
   }
 
+  /** Someone new joins the back of the line, walking in from the right. */
+  private joinLine() {
+    const taken = [...this.queue.map((w) => w.look), ...(this.current ? [this.current.look] : [])];
+    const look = pickLook(taken, CUSTOMER_LOOKS);
+    const shadow = this.add.image(L.W + PORTRAIT_OFFSCREEN, L.windowY + L.windowH, `cust_${look}`)
+      .setOrigin(0.5, 1).setScale(SHADOW_SCALE).setTintFill(SHADOW_COLOUR);
+    this.queue.push({ look, paidByCash: chooseCash(), shadow });
+  }
+
+  /** Eases everyone in line towards their place behind the customer. */
+  private updateLine(dt: number) {
+    this.queue.forEach((waiting, i) => {
+      const target = portraitX() + SHADOW_SPACING * (i + 1);
+      waiting.shadow.setDepth(1.5 - i * 0.1).setAlpha(SHADOW_ALPHAS[i] ?? 0);
+      waiting.shadow.x += (target - waiting.shadow.x) * Math.min(1, dt * 5);
+    });
+  }
+
   /** Once they've arrived, their cash or card comes down onto the counter. */
   private showPayment(customer: Customer) {
     if (customer.wants.length === 0) return;
     const held = customer.paidByCash ? this.heldMoney : this.heldCard;
     this.tweens.killTweensOf(held);
-    held.setPosition(propX(), tableY() - 22).setVisible(true).setAlpha(0);
+    held.setPosition(propX(), propY() - 22).setVisible(true).setAlpha(0);
     (customer.paidByCash ? sfx.bill : sfx.keypad)();
-    this.tweens.add({ targets: held, y: tableY(), alpha: 1, duration: 260, ease: 'Quad.easeOut' });
+    this.tweens.add({ targets: held, y: propY(), alpha: 1, duration: 260, ease: 'Quad.easeOut' });
   }
 
   private hidePayment() {
@@ -458,10 +495,12 @@ export class ShackScene extends Phaser.Scene {
     this.busy = true;
     this.spoken = '';
     this.readyToPay = false;
+    this.receiptLines = null;
     this.renderBubble();
+    // Out to the left, making room for the next person to step up.
     this.tweens.add({
       targets: this.portrait,
-      x: L.W + PORTRAIT_OFFSCREEN,
+      x: -PORTRAIT_OFFSCREEN,
       duration: 400,
       ease: 'Quad.easeIn',
       onComplete: () => {
@@ -481,7 +520,7 @@ export class ShackScene extends Phaser.Scene {
     this.bubbleLines = [];
     const customer = this.current;
     const visible = customer !== null && !this.busy;
-    const hasList = visible && customer.wants.length > 0;
+    const hasList = visible && customer.wants.length > 0 && this.receiptLines === null;
     this.bubble.setVisible(hasList);
     this.bubbleTail.setVisible(hasList);
     this.speech.setVisible(false);
@@ -500,7 +539,7 @@ export class ShackScene extends Phaser.Scene {
     };
 
     // The list: finished lines become a solid green row with a check mark
-    let y = bubbleY() + 3;
+    let y = this.receiptLines === null ? bubbleY() + 3 : bubbleY() + receiptHeight(this.receiptLines) + 10;
     if (hasList) {
       requestLines(customer.wants, session.table).forEach((line) => {
         const name = getProduct(line.productId).name;
@@ -539,6 +578,8 @@ export class ShackScene extends Phaser.Scene {
     const charged = customer.paidByCash ? roundToNickel(total) : total;
     if (customer.tender?.total !== charged) customer.tender = { total: charged, amount: customerTender(charged) };
     this.setDeskClear(true);
+    this.receiptLines = Math.min(items.length, 4);
+    this.renderBubble();
     this.openModal('Register', {
       items,
       total: charged,
@@ -552,6 +593,7 @@ export class ShackScene extends Phaser.Scene {
       },
       onBack: () => {
         this.setDeskClear(false);
+        this.receiptLines = null;
         this.readyToPay = true;
         this.say('');
       },
@@ -565,7 +607,7 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private floatMoney(total: number) {
-    const t = label(this, 84, tableY(), `+${formatCents(total)}`, 0x1f7a5a, 'center').setDepth(9);
+    const t = label(this, 110, tableY(), `+${formatCents(total)}`, 0x1f7a5a, 'center').setDepth(9);
     this.tweens.add({ targets: t, y: tableY() - 15, alpha: 0, duration: 1100, delay: 300, onComplete: () => t.destroy() });
   }
 
@@ -602,7 +644,7 @@ export class ShackScene extends Phaser.Scene {
       this.spawnIn = shortenWhenIdle(this.spawnIn, idle) - dt;
       if (this.spawnIn <= 0) {
         if (this.queue.length < MAX_WAITING) {
-          this.queue.push({ look: Math.floor(Math.random() * CUSTOMER_LOOKS), paidByCash: chooseCash() });
+          this.joinLine();
         }
         this.spawnIn = nextSpawnDelay(session.state.day);
       }
@@ -620,7 +662,7 @@ export class ShackScene extends Phaser.Scene {
     this.tickDelivery(dt);
     this.applyLighting();
     session.waiting = this.queue.length;
-    this.waitingArt.forEach((img, i) => img.setVisible(i < this.queue.length));
+    this.updateLine(dt);
     this.updateHud();
   }
 
@@ -632,7 +674,6 @@ export class ShackScene extends Phaser.Scene {
     // Customers are outside but lit by the shop, so they shift gently and stay readable.
     const tint = mixColour(mixColour(0xffffff, 0xffe2cc, dusk), 0xbcc4e2, night);
     this.portrait.setTint(tint);
-    this.waitingArt.forEach((img) => img.setTint(mixColour(0xffffff, 0x7a84b0, Math.max(dusk * 0.4, night))));
     this.warmLight.setFillStyle(0xffa050, 0.1 * Math.max(dusk * 0.5, night));
   }
 

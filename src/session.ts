@@ -26,7 +26,7 @@ function store(): SaveStore {
 function dayLengthSeconds(): number {
   // Dev-only override so a full day can be tested quickly: ?day=20
   const override = import.meta.env.DEV ? Number(new URLSearchParams(location.search).get('day')) : 0;
-  return override > 0 ? override : 180;
+  return override > 0 ? override : 300;
 }
 
 class Session {

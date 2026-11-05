@@ -6,10 +6,11 @@ A pixel art shop game for phone browsers. Run a little beachfront convenience st
 
 ## How to play
 
-1. **Morning:** tap an empty shelf, choose a snack and how many, then press **Place on Shelf**. Use the computer on the counter to order more snacks, which come in boxes of 10. A delivery box lands on the counter, and tapping it unpacks everything into your stock crate. You can't open until something is on a shelf.
-2. **Open:** customers come to your window one at a time, say what they want, and put cash or a card on the counter so you can see how they'll pay. They'll wait as long as it takes.
+1. **Morning:** tap an empty shelf, choose a snack and how many, then press **Place on Shelf**. Use the computer on the counter to order more snacks, which come in boxes of 12. A delivery box lands on the counter, and tapping it unpacks everything into your stock crate. You can't open until something is on a shelf.
+2. **Open:** customers line up and come to your window one at a time, say what they want, and put cash or a card on the counter so you can see how they'll pay. They'll wait as long as it takes.
    - Tap a shelf to move an item onto the counter, or tap an item on the counter to put it back. Once you have everything, payment starts on its own.
-   - **Cash:** there are no pennies, so totals round to the nearest 5 cents. The register shows the change due. Tap bills and coins to lay them on the counter, and tap any piece to take it back. Too little is refused. Too much goes through, and you lose the extra.
+   - A receipt prints beside the customer, and the panel below shows your next step.
+   - **Cash:** there are no pennies, so totals round to the nearest 5 cents. The panel shows the change due. Tap bills and coins to lay them on the counter, and tap any piece to take it back. Too little is refused. Too much goes through, and you lose the extra.
    - **Card:** a terminal comes up on the counter. Key in the exact total.
    - Press **Back** during payment to change the order first.
 3. **Close:** the shop runs from 9 AM to 9 PM, and evening sets in after 6 PM. Check the day's sales, missed sales and profit, then start the next day. Progress saves automatically.

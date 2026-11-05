@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getProduct, PRODUCTS, SHELF_CAPACITY } from '../src/data/products';
+import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY } from '../src/data/products';
 import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
 import { clockLabel, lightingAt } from '../src/logic/clock';
 import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
-import { buildRequest, IDLE_MAX_SECONDS, shortenWhenIdle } from '../src/logic/customers';
+import { buildRequest, IDLE_MAX_SECONDS, pickLook, shortenWhenIdle } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
@@ -103,12 +103,12 @@ describe('checkout', () => {
 describe('orders', () => {
   it('charges now and delivers when unpacked', () => {
     const s = newGame();
-    const cart = { chips: 10 };
+    const cart = { chips: BOX_SIZE };
     expect(placeOrder(s, cart)).toBe(true);
     expect(s.balance).toBe(10000 - cartCost(cart));
-    expect(s.stockroom.chips).toBe(10);
-    expect(deliverOrders(s)).toBe(10);
-    expect(s.stockroom.chips).toBe(20);
+    expect(s.stockroom.chips).toBe(12);
+    expect(deliverOrders(s)).toBe(BOX_SIZE);
+    expect(s.stockroom.chips).toBe(24);
     expect(s.pendingOrders).toEqual({});
   });
   it('refuses orders you cannot afford, and empty ones', () => {
@@ -124,7 +124,7 @@ describe('shelves', () => {
   it('moves stock from your stock', () => {
     const s = newGame();
     expect(stockShelf(s, SHELF, 'chips', 4)).toBe('ok');
-    expect(s.stockroom.chips).toBe(6);
+    expect(s.stockroom.chips).toBe(8);
     expect(onShelf(s, 'chips')).toBe(4);
   });
   it('holds one product at a time until emptied', () => {
@@ -132,7 +132,7 @@ describe('shelves', () => {
     stockShelf(s, SHELF, 'chips', 2);
     expect(stockShelf(s, SHELF, 'soda', 1)).toBe('shelf-taken');
     emptyShelf(s, SHELF);
-    expect(s.stockroom.chips).toBe(10);
+    expect(s.stockroom.chips).toBe(12);
     expect(stockShelf(s, SHELF, 'soda', 1)).toBe('ok');
   });
   it('stops at capacity', () => {
@@ -477,5 +477,32 @@ describe('layout', () => {
     const safe = computeLayout({ width: 390, height: 844, dpr: 3, safeTop: 47, safeBottom: 34 });
     expect(safe.hudH).toBeGreaterThan(plain.hudH);
     expect(safe.stripH).toBeGreaterThan(plain.stripH);
+  });
+});
+
+describe('boxes and margins', () => {
+  it('a box fills exactly one shelf', () => {
+    expect(BOX_SIZE).toBe(SHELF_CAPACITY);
+    expect(BOX_SIZE).toBe(12);
+  });
+  it('a new game starts with a box of each starter snack', () => {
+    Object.values(newGame().stockroom).forEach((qty) => expect(qty).toBe(BOX_SIZE));
+  });
+  it('every snack earns about 50% more than before', () => {
+    const before: Record<string, number> = { chips: 69, soda: 59, choco: 79, noodle: 99, jerky: 169, icepop: 199, popcorn: 229, coconut: 269, pie: 319, taco: 379, lemon: 449, shave: 529 };
+    for (const p of PRODUCTS) {
+      const ratio = (p.retail - p.wholesale) / before[p.id];
+      expect(ratio).toBeGreaterThanOrEqual(1.45);
+      expect(ratio).toBeLessThanOrEqual(1.6);
+    }
+  });
+});
+
+describe('the line', () => {
+  it('never picks a character already in view when one is free', () => {
+    for (let i = 0; i < 200; i++) expect([3, 5, 7]).not.toContain(pickLook([3, 5, 7], 12));
+  });
+  it('still picks someone if every character is taken', () => {
+    expect(pickLook([0, 1], 2)).toBeLessThan(2);
   });
 });

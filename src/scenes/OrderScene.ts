@@ -6,7 +6,7 @@ import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, unlockedProducts
 import { formatCents } from '../logic/money';
 import { cartCost, placeOrder, type Cart } from '../logic/orders';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, button, label } from '../ui';
+import { BUTTONS, COLOURS, WIDTH, backdrop, button, closeButton, label, mainButton, pager } from '../ui';
 
 export type OrderTab = 'snacks' | 'licences' | 'shelves';
 
@@ -47,11 +47,11 @@ export class OrderScene extends Phaser.Scene {
     const { state } = session;
 
     this.track(label(this, 6, 4, 'ORDER STOCKS', COLOURS.gold));
-    this.track(button(this, WIDTH - 50, 3, 46, 20, 'CLOSE', () => this.close()));
+    this.track(closeButton(this, () => this.close()));
     this.track(label(this, 6, 14, formatCents(state.balance), COLOURS.dim));
 
     const tab = (x: number, w: number, id: OrderTab, text: string) =>
-      this.track(button(this, x, 27, w, 24, text, () => {
+      this.track(button(this, x, 27, w, BUTTONS.tabH, text, () => {
         this.tab = id;
         this.page = 0;
         this.render();
@@ -69,11 +69,7 @@ export class OrderScene extends Phaser.Scene {
   private renderList(products: Product[], row: (p: Product, y: number) => void) {
     const pages = Math.max(1, Math.ceil(products.length / PER_PAGE));
     this.page = Math.min(this.page, pages - 1);
-    if (pages > 1) {
-      this.track(button(this, 92, 3, 22, 20, '<', () => this.turn(-1))).setEnabled(this.page > 0);
-      this.track(button(this, 138, 3, 22, 20, '>', () => this.turn(1))).setEnabled(this.page < pages - 1);
-      this.track(label(this, 126, 9, `${this.page + 1}/${pages}`, COLOURS.dim, 'center'));
-    }
+    if (pages > 1) pager(this, this.page, pages, (delta) => this.turn(delta)).forEach((o) => this.track(o));
     products.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE).forEach((p, i) => row(p, LIST_Y + i * ROW_H));
   }
 
@@ -89,9 +85,9 @@ export class OrderScene extends Phaser.Scene {
     this.track(label(this, 24, y + 2, product.name));
     this.track(label(this, 24, y + 12, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
     this.track(label(this, 24, y + 22, `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
-    this.track(button(this, 136, y + 2, 26, 32, '-', () => this.change(product.id, -BOX_SIZE))).setEnabled(boxes > 0);
-    this.track(label(this, 169, y + 14, String(boxes), boxes ? COLOURS.gold : COLOURS.dim, 'center'));
-    this.track(button(this, 176, y + 2, 36, 32, '+', () => this.change(product.id, BOX_SIZE)));
+    this.track(button(this, 134, y + 2, BUTTONS.stepper, BUTTONS.stepper, '-', () => this.change(product.id, -BOX_SIZE))).setEnabled(boxes > 0);
+    this.track(label(this, 172, y + 14, String(boxes), boxes ? COLOURS.gold : COLOURS.dim, 'center'));
+    this.track(button(this, 180, y + 2, BUTTONS.stepper, BUTTONS.stepper, '+', () => this.change(product.id, BOX_SIZE)));
   }
 
   private renderLicences() {
@@ -105,7 +101,7 @@ export class OrderScene extends Phaser.Scene {
       this.track(this.add.image(12, y + 17, `item_${product.id}`));
       this.track(label(this, 24, y + 6, product.name));
       this.track(label(this, 24, y + 18, `+${formatCents(product.retail - product.wholesale)} A SALE`, COLOURS.green));
-      this.track(button(this, 142, y + 2, 70, 32, formatCents(price), () => {
+      this.track(button(this, WIDTH - BUTTONS.rowW - 4, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), () => {
         if (!buyLicence(session.state, product.id)) return;
         sfx.unlock();
         this.notice = `${product.short} UNLOCKED!`;
@@ -124,11 +120,11 @@ export class OrderScene extends Phaser.Scene {
       this.track(label(this, 8, y + 6, `SHELF ROW ${rowNumber}`));
       this.track(label(this, 8, y + 18, '4 MORE SHELVES', COLOURS.green));
       if (owned) {
-        this.track(label(this, 177, y + 14, 'OWNED', COLOURS.dim, 'center'));
+        this.track(label(this, WIDTH - 4 - BUTTONS.rowW / 2, y + 14, 'OWNED', COLOURS.dim, 'center'));
         return;
       }
       const isNext = nextRowPrice(state) === price;
-      this.track(button(this, 142, y + 2, 70, 32, formatCents(price), () => {
+      this.track(button(this, WIDTH - BUTTONS.rowW - 4, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), () => {
         if (!buyShelfRow(state)) return;
         sfx.unlock();
         this.notice = 'NEW SHELVES ADDED!';
@@ -142,13 +138,13 @@ export class OrderScene extends Phaser.Scene {
   private renderFooter() {
     const cost = cartCost(this.cart);
     const canAfford = cost <= session.state.balance;
-    this.track(this.add.rectangle(6, 290, WIDTH - 12, 1, COLOURS.border).setOrigin(0));
-    this.track(label(this, 6, 300, 'TOTAL', COLOURS.dim));
-    this.track(label(this, 6, 311, formatCents(cost), canAfford ? COLOURS.white : COLOURS.red));
-    const place = this.track(button(this, 96, 296, 116, 32, 'PLACE ORDER', () => this.submit(), COLOURS.accent, null));
+    this.track(this.add.rectangle(6, 288, WIDTH - 12, 1, COLOURS.border).setOrigin(0));
+    this.track(label(this, 6, 294, 'TOTAL', COLOURS.dim));
+    this.track(label(this, WIDTH - 6, 294, formatCents(cost), canAfford ? COLOURS.white : COLOURS.red, 'right'));
+    const place = this.track(mainButton(this, 306, 'PLACE ORDER', () => this.submit()));
     place.setEnabled(cost > 0 && canAfford);
     const note = !canAfford ? 'NOT ENOUGH MONEY' : this.notice || `EACH + IS A BOX OF ${BOX_SIZE}`;
-    this.track(label(this, WIDTH / 2, 342, note, !canAfford ? COLOURS.red : this.notice ? COLOURS.green : COLOURS.dim, 'center'));
+    this.track(label(this, WIDTH / 2, 344, note, !canAfford ? COLOURS.red : this.notice ? COLOURS.green : COLOURS.dim, 'center'));
   }
 
   private change(id: string, delta: number) {

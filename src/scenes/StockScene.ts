@@ -4,7 +4,7 @@ import { SHELF_CAPACITY, getProduct } from '../data/products';
 import { emptyShelf, stockShelf } from '../logic/inventory';
 import { unlockedProducts } from '../logic/licences';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, button, label } from '../ui';
+import { BUTTONS, COLOURS, WIDTH, backdrop, button, closeButton, label, mainButton, pager, secondaryButton } from '../ui';
 
 interface StockData {
   shelfId: string;
@@ -12,7 +12,7 @@ interface StockData {
 
 const PER_PAGE = 6;
 const LIST_Y = 72;
-const ROW_H = 32;
+const ROW_H = 30;
 
 export class StockScene extends Phaser.Scene {
   private shelfId = '';
@@ -75,13 +75,13 @@ export class StockScene extends Phaser.Scene {
     }
 
     this.track(label(this, 6, 8, 'SHELF', COLOURS.gold));
-    this.track(button(this, WIDTH - 50, 3, 46, 20, 'CLOSE', () => this.close()));
+    this.track(closeButton(this, () => this.close()));
 
     const current = shelf.productId ? getProduct(shelf.productId).name : 'EMPTY';
     this.track(label(this, 6, 30, current, shelf.productId ? COLOURS.white : COLOURS.dim));
     this.track(label(this, 6, 40, `HOLDS ${shelf.qty}/${SHELF_CAPACITY}`, COLOURS.dim));
     if (shelf.productId) {
-      this.track(button(this, WIDTH - 62, 28, 58, 22, 'REMOVE', () => {
+      this.track(button(this, WIDTH - BUTTONS.removeW - 4, 28, BUTTONS.removeW, BUTTONS.compactH, 'REMOVE', () => {
         emptyShelf(session.state, this.shelfId);
         this.selected = null;
         this.changed();
@@ -96,11 +96,7 @@ export class StockScene extends Phaser.Scene {
     const products = unlockedProducts(session.state).sort((a, b) => Number(this.have(b.id) > 0) - Number(this.have(a.id) > 0));
     const pages = Math.ceil(products.length / PER_PAGE);
     this.page = Math.min(this.page, pages - 1);
-    if (pages > 1) {
-      this.track(button(this, 112, 56, 24, 14, '<', () => this.turn(-1))).setEnabled(this.page > 0);
-      this.track(label(this, 150, 59, `${this.page + 1}/${pages}`, COLOURS.dim, 'center'));
-      this.track(button(this, 164, 56, 24, 14, '>', () => this.turn(1))).setEnabled(this.page < pages - 1);
-    }
+    if (pages > 1) pager(this, this.page, pages, (delta) => this.turn(delta)).forEach((o) => this.track(o));
 
     products.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE).forEach((product, i) => {
       const y = LIST_Y + i * ROW_H;
@@ -111,25 +107,24 @@ export class StockScene extends Phaser.Scene {
       row.setAlpha(usable ? 1 : 0.5);
       if (isSelected) row.setStrokeStyle(1, COLOURS.white);
       if (usable) row.setInteractive({ useHandCursor: true }).on('pointerup', () => this.select(product.id));
-      this.track(this.add.image(16, y + 15, `item_${product.id}`).setAlpha(alpha));
-      this.track(label(this, 28, y + 5, product.name).setAlpha(alpha));
-      this.track(label(this, 28, y + 16, `HAVE ${this.have(product.id)}`, isSelected ? COLOURS.white : COLOURS.dim).setAlpha(alpha));
+      this.track(this.add.image(16, y + 14, `item_${product.id}`).setAlpha(alpha));
+      this.track(label(this, 28, y + 4, product.name).setAlpha(alpha));
+      this.track(label(this, 28, y + 15, `HAVE ${this.have(product.id)}`, isSelected ? COLOURS.white : COLOURS.dim).setAlpha(alpha));
       if (isSelected) this.track(label(this, WIDTH - 12, y + 11, '✓', COLOURS.white, 'right'));
     });
 
-    const footerY = LIST_Y + PER_PAGE * ROW_H + 2;
+    const footerY = LIST_Y + PER_PAGE * ROW_H;
     const max = this.selected ? this.maxFor(this.selected) : 0;
-    this.track(label(this, 6, footerY + 8, 'HOW MANY', this.selected ? COLOURS.white : COLOURS.dim));
-    this.track(button(this, 112, footerY, 30, 24, '-', () => this.changeQty(-1))).setEnabled(this.qty > 1);
-    this.track(label(this, 158, footerY + 8, String(this.qty), this.selected ? COLOURS.gold : COLOURS.dim, 'center'));
-    this.track(button(this, 174, footerY, 36, 24, '+', () => this.changeQty(1))).setEnabled(this.qty > 0 && this.qty < max);
+    this.track(label(this, 6, footerY + 12, 'HOW MANY', this.selected ? COLOURS.white : COLOURS.dim));
+    this.track(button(this, 134, footerY, BUTTONS.stepper, BUTTONS.stepper, '-', () => this.changeQty(-1))).setEnabled(this.qty > 1);
+    this.track(label(this, 172, footerY + 12, String(this.qty), this.selected ? COLOURS.gold : COLOURS.dim, 'center'));
+    this.track(button(this, 180, footerY, BUTTONS.stepper, BUTTONS.stepper, '+', () => this.changeQty(1))).setEnabled(this.qty > 0 && this.qty < max);
 
-    this.track(button(this, 6, footerY + 28, WIDTH - 12, 32, 'PLACE ON SHELF', () => this.place(), COLOURS.accent, null))
-      .setEnabled(this.selected !== null && this.qty > 0);
-    this.track(button(this, 44, footerY + 64, WIDTH - 88, 20, 'ORDER MORE STOCK', () => {
+    this.track(mainButton(this, footerY + 36, 'PLACE ON SHELF', () => this.place())).setEnabled(this.selected !== null && this.qty > 0);
+    this.track(secondaryButton(this, footerY + 72, 'ORDER MORE STOCK', () => {
       this.scene.stop();
       this.scene.launch('Order');
-    }, COLOURS.panel));
+    }));
   }
 
   private turn(delta: number) {

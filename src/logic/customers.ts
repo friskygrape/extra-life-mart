@@ -52,6 +52,13 @@ export function shortenWhenIdle(spawnIn: number, idle: boolean): number {
   return idle ? Math.min(spawnIn, IDLE_MAX_SECONDS) : spawnIn;
 }
 
+/** Picks a character who isn't already at the window or in line, whenever one is free. */
+export function pickLook(taken: number[], looks: number, rng: () => number = Math.random): number {
+  const free = Array.from({ length: looks }, (_, i) => i).filter((i) => !taken.includes(i));
+  const pool = free.length > 0 ? free : Array.from({ length: looks }, (_, i) => i);
+  return pool[Math.floor(rng() * pool.length)];
+}
+
 export function chooseCash(rng: () => number = Math.random): boolean {
   return rng() < 0.55;
 }

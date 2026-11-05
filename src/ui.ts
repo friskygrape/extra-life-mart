@@ -94,6 +94,50 @@ export function button(
   };
 }
 
+/** Every button of a type is the same size. Main and secondary fill their screen's width. */
+export const BUTTONS = {
+  largeH: 32,
+  rowW: 70,
+  rowH: 32,
+  stepper: 32,
+  compactH: 22,
+  closeW: 46,
+  removeW: 58,
+  pageW: 28,
+  pageH: 22,
+  tabH: 24,
+  stripW: 78,
+  stripH: 26,
+  actionH: 36,
+};
+
+/** Screens at the minimum layout have this much usable width for full-width buttons. */
+export const LARGE_X = 6;
+export const LARGE_W = WIDTH - LARGE_X * 2;
+
+export function mainButton(scene: Phaser.Scene, y: number, text: string, onTap: () => void, tapSound: (() => void) | null = null) {
+  return button(scene, LARGE_X, y, LARGE_W, BUTTONS.largeH, text, onTap, COLOURS.accent, tapSound);
+}
+
+export function secondaryButton(scene: Phaser.Scene, y: number, text: string, onTap: () => void) {
+  return button(scene, LARGE_X, y, LARGE_W, BUTTONS.largeH, text, onTap, COLOURS.panel);
+}
+
+export function closeButton(scene: Phaser.Scene, onTap: () => void) {
+  return button(scene, WIDTH - BUTTONS.closeW - 4, 3, BUTTONS.closeW, BUTTONS.compactH, 'CLOSE', onTap);
+}
+
+/** The shared previous/next arrows for long lists, with the page count between them. */
+export function pager(scene: Phaser.Scene, page: number, pages: number, onTurn: (delta: number) => void) {
+  const y = 3;
+  const prev = button(scene, 84, y, BUTTONS.pageW, BUTTONS.pageH, '<', () => onTurn(-1));
+  const next = button(scene, 134, y, BUTTONS.pageW, BUTTONS.pageH, '>', () => onTurn(1));
+  prev.setEnabled(page > 0);
+  next.setEnabled(page < pages - 1);
+  const count = label(scene, 123, y + 8, `${page + 1}/${pages}`, COLOURS.dim, 'center');
+  return [prev, next, count];
+}
+
 /**
  * For screens laid out at the minimum size: centres that content on larger
  * screens, and fills the whole screen behind it, which also stops taps reaching the shop.
@@ -102,5 +146,7 @@ export function backdrop(scene: Phaser.Scene): Phaser.GameObjects.Rectangle {
   const offsetX = Math.floor((L.W - WIDTH) / 2);
   const offsetY = Math.floor((L.H - HEIGHT) / 2);
   scene.cameras.main.setScroll(-offsetX, -offsetY);
-  return scene.add.rectangle(-offsetX, -offsetY, L.W, L.H, COLOURS.bg).setOrigin(0).setInteractive();
+  // A little past every edge, so rounding can't leave a sliver of the shop showing.
+  const bleed = 4;
+  return scene.add.rectangle(-offsetX - bleed, -offsetY - bleed, L.W + bleed * 2, L.H + bleed * 2, COLOURS.bg).setOrigin(0).setInteractive();
 }

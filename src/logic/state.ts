@@ -44,7 +44,7 @@ export function newGame(): GameState {
     version: SAVE_VERSION,
     day: 1,
     balance: 10000,
-    stockroom: { chips: 10, soda: 10, choco: 10, noodle: 10 },
+    stockroom: { chips: 12, soda: 12, choco: 12, noodle: 12 },
     pendingOrders: {},
     shelves: slotsInRow(0).map((s) => newShelf(s.id)),
     rowsOwned: 1,
