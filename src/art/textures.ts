@@ -676,6 +676,15 @@ function drawInfoBoard(scene: Phaser.Scene) {
   star('star_on', '#ffd65c', '#f0a93a');
   star('star_off', '#7a5a38', '#6d4f2b');
 
+  // The guiding arrow, pointing down. It's flipped to point up.
+  canvasTexture(scene, 'guide_arrow', 15, 16, (c) => {
+    rect(c, '#ffc65c', 5, 1, 5, 8);
+    rect(c, '#ffe19c', 5, 1, 2, 8);
+    for (let row = 0; row < 6; row++) {
+      rect(c, row < 2 ? '#ffe19c' : '#ffc65c', 1 + row, 9 + row, 13 - row * 2, 1);
+    }
+    outline(c, 15, 16, '#2c2a33');
+  });
   canvasTexture(scene, 'raindrop', 1, 4, (c) => rect(c, '#cfe6f5', 0, 0, 1, 4));
   canvasTexture(scene, 'pixel_white', 2, 2, (c) => rect(c, '#ffffff', 0, 0, 2, 2));
 

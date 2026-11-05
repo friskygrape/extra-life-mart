@@ -16,6 +16,7 @@ import { buildRequest, chooseCash, emptyShelfComment, idleWait, nextSpawnDelay, 
 import { endDay, nothingToSell } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { nextRowPrice } from '../logic/licences';
+import { onboardingStep, type OnboardingStep } from '../logic/onboarding';
 import { customerTender, formatCents, roundToNickel } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
@@ -54,6 +55,15 @@ const TIP_BAR_W = 40;
 const RAIN_DROPS = 36;
 const TV_FRAME_MS = 420;
 const RENT_RED = 0xc9503f;
+/** The first instruction waits a beat after loading. The next follows almost at once. */
+const FIRST_GUIDE_SECONDS = 0.6;
+const NEXT_GUIDE_SECONDS = 0.15;
+const GUIDE_NOTE_W = 112;
+const GUIDE_DEPTH = 7.5;
+const GUIDE_TEXT: Record<OnboardingStep, string> = {
+  shelf: 'ADD ITEMS TO\nTHE SHELF\nBEFORE OPENING',
+  sign: "OPEN THE STORE\nWHEN YOU'RE READY\nTO START SELLING",
+};
 const WEATHER_TINT: Record<WeatherId, { colour: number; alpha: number }> = {
   sunny: { colour: 0xffffff, alpha: 0 },
   heatwave: { colour: 0xff9a30, alpha: 0.16 },
@@ -149,6 +159,12 @@ export class ShackScene extends Phaser.Scene {
   private tipBar!: Phaser.GameObjects.Rectangle;
   private tipBarBack!: Phaser.GameObjects.Rectangle;
   private recentLines: string[] = [];
+  private guideArrow!: Phaser.GameObjects.Image;
+  private guideNote!: Phaser.GameObjects.Graphics;
+  private guideText!: Phaser.GameObjects.BitmapText;
+  private guideStep: OnboardingStep | null = null;
+  private guideShown = false;
+  private guideWait = FIRST_GUIDE_SECONDS;
 
   constructor() {
     super('Shack');
@@ -197,6 +213,7 @@ export class ShackScene extends Phaser.Scene {
     this.buildWeather();
     this.buildTv();
     this.buildCalendar();
+    this.buildGuide();
     this.heldMoney = this.add.image(propX(), propY(), 'held_cash').setDepth(5.1).setVisible(false);
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
@@ -244,6 +261,65 @@ export class ShackScene extends Phaser.Scene {
     if (session.state.closed) {
       session.modal = true;
       this.scene.launch('GameOver');
+    }
+  }
+
+  // ---- First-day guide ----------------------------------------------------
+
+  /** Purely a picture: it never takes a tap, so the shelves and the sign underneath keep working. */
+  private buildGuide() {
+    this.guideArrow = this.add.image(0, 0, 'guide_arrow').setDepth(GUIDE_DEPTH).setVisible(false);
+    this.guideNote = this.add.graphics().setDepth(GUIDE_DEPTH).setVisible(false);
+    this.guideText = label(this, 0, 0, '', COLOURS.ink).setDepth(GUIDE_DEPTH + 0.1).setVisible(false);
+  }
+
+  private setGuideVisible(visible: boolean) {
+    this.guideArrow.setVisible(visible);
+    this.guideNote.setVisible(visible);
+    this.guideText.setVisible(visible);
+  }
+
+  private showGuide(step: OnboardingStep) {
+    const pointsAtSign = step === 'sign';
+    const arrowX = pointsAtSign ? L.windowX + Math.floor(L.windowW / 2) : columnX(1) + Math.floor((columnX(2) - columnX(1)) / 2);
+    this.guideText.setText(GUIDE_TEXT[step]);
+    const noteH = this.guideText.height + 5;
+    const arrowH = this.guideArrow.height;
+    // Below the sign, pointing up at it. Above the shelf, pointing down at it.
+    const signBottom = L.windowY + Math.floor(L.windowH / 2) + 11;
+    const arrowY = pointsAtSign ? signBottom + 1 + arrowH / 2 : L.shelfTop - arrowH / 2 + 1;
+    const noteY = pointsAtSign ? arrowY + arrowH / 2 + 1 : arrowY - arrowH / 2 - 1 - noteH;
+    // Beside the arrow, staying clear of the till on the left and the computer on the right.
+    const noteX = Math.max(46, Math.min(L.W - 52 - GUIDE_NOTE_W, arrowX - Math.floor(GUIDE_NOTE_W / 2)));
+    drawPaper(this.guideNote, noteX, noteY, GUIDE_NOTE_W, noteH, false);
+    this.guideText.setPosition(noteX + 3, noteY + 3);
+
+    this.tweens.killTweensOf(this.guideArrow);
+    this.guideArrow.setPosition(arrowX, arrowY).setFlipY(pointsAtSign).setScale(0.3);
+    this.tweens.add({ targets: this.guideArrow, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    // Bobs towards what it's pointing at
+    this.tweens.add({ targets: this.guideArrow, y: arrowY + (pointsAtSign ? -3 : 3), duration: 420, ease: 'Sine.easeInOut', yoyo: true, repeat: -1 });
+    this.setGuideVisible(true);
+    sfx.hint();
+  }
+
+  private updateGuide(dt: number) {
+    const step = onboardingStep(session.state, session.phase);
+    if (step !== this.guideStep) {
+      // The very first instruction keeps its longer wait.
+      if (this.guideStep !== null) this.guideWait = NEXT_GUIDE_SECONDS;
+      this.guideStep = step;
+      this.guideShown = false;
+      this.setGuideVisible(false);
+    }
+    if (!step) return;
+    // Out of the way behind other screens, and back without another chime.
+    if (session.modal) return this.setGuideVisible(false);
+    if (this.guideShown) return this.setGuideVisible(true);
+    this.guideWait -= dt;
+    if (this.guideWait <= 0) {
+      this.guideShown = true;
+      this.showGuide(step);
     }
   }
 
@@ -375,7 +451,9 @@ export class ShackScene extends Phaser.Scene {
     this.closedSign.setVisible(true);
     this.refreshInfoBoard();
     this.refreshShelves();
-    if (performance.now() >= session.messageUntil) session.toast(this.todayMessage(), 3500);
+    if (performance.now() >= session.messageUntil && !onboardingStep(session.state, session.phase)) {
+      session.toast(this.todayMessage(), 3500);
+    }
   }
 
   private todayMessage(): string {
@@ -887,6 +965,7 @@ export class ShackScene extends Phaser.Scene {
     }
     this.tickDelivery(dt);
     this.updateRain(dt);
+    this.updateGuide(dt);
     this.updateTipBar(dt);
     this.applyLighting();
     session.waiting = this.queue.length;
@@ -923,6 +1002,8 @@ export class ShackScene extends Phaser.Scene {
     if (performance.now() < session.messageUntil) return session.message;
     const { state, phase, waiting } = session;
     if (this.box && !this.boxOpening) return 'TAP THE BOX TO UNPACK IT';
+    // The guide's note is already saying what to do.
+    if (onboardingStep(state, phase)) return '';
     if (phase === 'morning') {
       if (nothingToSell(state)) return 'NOTHING TO SELL. ORDER MORE';
       return anyShelfStocked(state) ? 'ORDER MORE OR OPEN UP' : 'TAP AN EMPTY SHELF TO STOCK IT';

@@ -148,8 +148,9 @@ export const sfx = {
     tone(660, 0.06, { vol: 0.04 });
     tone(880, 0.1, { vol: 0.04, at: 0.07 });
   }),
-  unlock: sound(() => {
-    [523, 659, 784, 1047].forEach((f, i) => tone(f, i === 3 ? 0.3 : 0.1, { vol: 0.05, at: i * 0.09 }));
+  hint: sound(() => {
+    tone(880, 0.1, { type: 'triangle', vol: 0.08 });
+    tone(1319, 0.22, { type: 'triangle', vol: 0.08, at: 0.1 });
   }),
   dayEnd: sound(() => {
     [784, 659, 523].forEach((f, i) => tone(f, 0.16, { type: 'triangle', vol: 0.06, at: i * 0.13 }));

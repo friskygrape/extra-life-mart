@@ -15,11 +15,13 @@ A pixel art shop game for phone browsers. Run a little beachfront convenience st
    - To change the order during payment, tap the window to back out.
 3. **Close:** the shop runs from 9 AM to 9 PM, and evening sets in after 6 PM. Check the day's sales, tips, missed sales and profit, then start the next day. Progress saves automatically.
 
+On a new game, an arrow guides you through stocking your first shelf and opening up.
+
 ## Getting ahead
 
 Customers only buy what's on your shelves. If they go for a snack you're licensed to sell but haven't stocked, that's a sale you missed.
 
-Starter snacks sell, but they barely pay. Spend your profits at the computer: licences unlock snacks with better margins, and extra rows of shelves give you room to stock them.
+Starter snacks sell, but they barely pay. Spend your profits at the computer: every snack is on the order list, and paying for a locked snack's licence lets you order it. Better snacks earn better margins, and extra rows of shelves give you room to stock them.
 
 **Weather and events** change what people want. A heatwave sells cold drinks, rain sells hot food, and boardwalk events bring crowds with favourite snacks. Customers often mention what's coming, so listen to them and order ahead. Food never spoils.
 

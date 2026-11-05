@@ -19,6 +19,7 @@ import { allGreetingLines, pickGreeting } from '../src/logic/dialogue';
 import { rollWeather, WEATHER } from '../src/data/weather';
 import { eventOnDay, nextEvent } from '../src/data/events';
 import { REGULARS } from '../src/data/regulars';
+import { onboardingStep } from '../src/logic/onboarding';
 import { CUSTOMER_LOOKS } from '../src/art/looks';
 
 const SHELF = 'shelf-0-0';
@@ -859,5 +860,38 @@ describe('days with nothing to sell', () => {
     expect(nothingToSell(s)).toBe(true);
     endDay(s);
     expect(nothingToSell(s)).toBe(false);
+  });
+});
+
+describe('first-day guide', () => {
+  it('starts by pointing at the shelves', () => {
+    expect(onboardingStep(newGame(), 'morning')).toBe('shelf');
+  });
+  it('moves to the sign once something is on a shelf', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 1);
+    expect(onboardingStep(s, 'morning')).toBe('sign');
+  });
+  it('goes back if the shelves are emptied again', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 1);
+    emptyShelf(s, SHELF);
+    expect(onboardingStep(s, 'morning')).toBe('shelf');
+  });
+  it('is gone once the store opens', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 1);
+    expect(onboardingStep(s, 'open')).toBeNull();
+    expect(onboardingStep(s, 'closing')).toBeNull();
+  });
+  it('never shows after day 1', () => {
+    const s = newGame();
+    s.day = 2;
+    expect(onboardingStep(s, 'morning')).toBeNull();
+  });
+  it('does not ask for stock the player does not have', () => {
+    const s = newGame();
+    s.stockroom = {};
+    expect(onboardingStep(s, 'morning')).toBeNull();
   });
 });
