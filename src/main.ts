@@ -3,6 +3,7 @@ import { audioStatus, unlockAudio } from './audio';
 import { BootScene } from './scenes/BootScene';
 import { InventoryScene } from './scenes/InventoryScene';
 import { OrderScene } from './scenes/OrderScene';
+import { PauseScene } from './scenes/PauseScene';
 import { RegisterScene } from './scenes/RegisterScene';
 import { ShackScene } from './scenes/ShackScene';
 import { StockScene } from './scenes/StockScene';
@@ -34,7 +35,7 @@ const game = new Phaser.Game({
   pixelArt: true,
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE },
-  scene: [BootScene, ShackScene, OrderScene, StockScene, InventoryScene, RegisterScene, SummaryScene],
+  scene: [BootScene, ShackScene, OrderScene, StockScene, InventoryScene, RegisterScene, SummaryScene, PauseScene],
 });
 
 let rebuildPending = false;

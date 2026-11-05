@@ -516,24 +516,10 @@ function drawProps(scene: Phaser.Scene) {
     rect(c, '#6d4f2b', 3, 1, 1, 16);
     rect(c, '#6d4f2b', 16, 1, 1, 16);
   });
-  canvasTexture(scene, 'sound_on', 11, 9, (c) => {
-    rect(c, '#ece3cc', 0, 3, 2, 3);
-    rect(c, '#ece3cc', 2, 2, 1, 5);
-    rect(c, '#ece3cc', 3, 1, 1, 7);
-    rect(c, '#ece3cc', 4, 0, 1, 9);
-    rect(c, '#8fe0a0', 6, 3, 1, 3);
-    rect(c, '#8fe0a0', 8, 2, 1, 5);
-    rect(c, '#8fe0a0', 10, 1, 1, 7);
-  });
-  canvasTexture(scene, 'sound_off', 11, 9, (c) => {
-    rect(c, '#93a3a0', 0, 3, 2, 3);
-    rect(c, '#93a3a0', 2, 2, 1, 5);
-    rect(c, '#93a3a0', 3, 1, 1, 7);
-    rect(c, '#93a3a0', 4, 0, 1, 9);
-    for (let i = 0; i < 5; i++) {
-      rect(c, '#f0705f', 6 + i, 2 + i, 1, 1);
-      rect(c, '#f0705f', 10 - i, 2 + i, 1, 1);
-    }
+  canvasTexture(scene, 'menu_icon', 13, 11, (c) => {
+    rect(c, '#fbf3df', 0, 0, 13, 2);
+    rect(c, '#fbf3df', 0, 4, 13, 2);
+    rect(c, '#fbf3df', 0, 8, 13, 2);
   });
 }
 

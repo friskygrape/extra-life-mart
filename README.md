@@ -25,6 +25,8 @@ Starter snacks sell, but they barely pay. Spend your profits at the computer: li
 
 Tap on a phone, or click on desktop. On desktop, Esc also closes the stock and supplier screens and backs out of payment, and number keys, Backspace and Enter work on the card terminal.
 
+Use the menu at the top left to pause, turn sound on or off, or restart.
+
 ## Run it locally
 
 ```sh

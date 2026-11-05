@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { getProduct, shelfLabelLines } from '../data/products';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { CUSTOMER_LOOKS, SHELF_LABEL_H, columnX } from '../art/textures';
-import { isMuted, sfx, toggleMuted } from '../audio';
+import { sfx } from '../audio';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
 import { lightingAt } from '../logic/clock';
 import { buildRequest, chooseCash, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
@@ -108,7 +108,6 @@ export class ShackScene extends Phaser.Scene {
   private action!: Button;
   private stockCount!: Phaser.GameObjects.BitmapText;
   private crate!: Phaser.GameObjects.Image;
-  private soundIcon!: Phaser.GameObjects.Image;
   private box: Phaser.GameObjects.Image | null = null;
   private boxOpening = false;
   private deliveryIn = 0;
@@ -159,7 +158,15 @@ export class ShackScene extends Phaser.Scene {
 
     this.add.rectangle(0, 0, W, L.hudH, COLOURS.bg).setOrigin(0).setDepth(6);
     const hudText = L.hudH - 11;
-    this.dayText = label(this, 4, hudText, '').setDepth(7);
+    this.add.image(11, L.hudH - 8, 'menu_icon').setDepth(7);
+    this.dayText = label(this, 23, hudText, '').setDepth(7);
+    this.add.rectangle(0, 0, 22, L.hudH + 8, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        // Full-screen menus cover this button, so only the shop and payment screens can reach it.
+        if (this.scene.isActive('Pause') || session.phase === 'summary') return;
+        sfx.click();
+        this.scene.launch('Pause');
+      });
     this.clockText = label(this, Math.floor(W / 2) + 6, hudText, '', COLOURS.dim, 'center').setDepth(7);
     this.moneyText = label(this, W - 4, hudText, '', COLOURS.gold, 'right').setDepth(7);
 
@@ -174,12 +181,6 @@ export class ShackScene extends Phaser.Scene {
     this.stockCount = label(this, crateX(), crateY() - 3, '', COLOURS.white, 'center').setDepth(8);
     this.hint = label(this, 28, L.stripTop + 2, '').setDepth(7);
     this.hint.setMaxWidth(W - 116);
-    this.soundIcon = this.add.image(46, L.hudH - 8, isMuted() ? 'sound_off' : 'sound_on').setDepth(7);
-    this.add.rectangle(35, 0, 22, L.hudH, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
-      .on('pointerup', () => {
-        this.soundIcon.setTexture(toggleMuted() ? 'sound_off' : 'sound_on');
-        sfx.click();
-      });
     this.action = button(this, W - BUTTONS.stripW - 4, L.stripTop + 3, BUTTONS.stripW, BUTTONS.stripH, 'OPEN', () => this.pressAction(), COLOURS.accent, null);
     this.action.rect.setDepth(7);
     this.action.text.setDepth(8);
