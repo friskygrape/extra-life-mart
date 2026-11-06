@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { getProduct, shelfLabelLines } from '../data/products';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { CALENDAR_W, CUSTOMER_LOOKS, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_W, columnX } from '../art/textures';
+import { CALENDAR_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, MONITOR_CENTRE_X, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_W, columnX } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
@@ -60,7 +60,7 @@ const FIRST_GUIDE_SECONDS = 0.6;
 const NEXT_GUIDE_SECONDS = 0.15;
 const GUIDE_NOTE_W = 112;
 const GUIDE_DEPTH = 7.5;
-const COMPUTER_W = 50;
+const COMPUTER_W = COMPUTER_SPRITE_W;
 const computerTop = () => L.counterBottom - 6 + 2 - 60;
 const shelfIsEmpty = (id: string) => session.state.shelves.find((s) => s.id === id)?.qty === 0;
 const GUIDE_TEXT: Record<OnboardingStep, string> = {
@@ -207,8 +207,7 @@ export class ShackScene extends Phaser.Scene {
     const computerX = W - COMPUTER_W - 2;
     const computerY = computerTop();
     this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
-    label(this, computerX + 24, computerY + 8, 'ORDER', COLOURS.green, 'center').setDepth(4.6);
-    label(this, computerX + 24, computerY + 18, 'STOCKS', COLOURS.green, 'center').setDepth(4.6);
+    label(this, computerX + 28, computerY + 9, 'SHOP', COLOURS.white, 'center').setDepth(4.6);
     this.add.rectangle(computerX, computerY, COMPUTER_W, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         this.finishComputerTip();
@@ -298,7 +297,7 @@ export class ShackScene extends Phaser.Scene {
       // The note goes in the bottom panel, because near the computer it would cover the customer's order.
       const noteX = 28;
       return {
-        arrowX: L.W - COMPUTER_W / 2 - 2,
+        arrowX: L.W - COMPUTER_W - 2 + MONITOR_CENTRE_X,
         arrowY: computerTop() - arrowH / 2 + 1,
         noteX,
         noteY: L.stripTop + 3,

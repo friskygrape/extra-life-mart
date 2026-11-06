@@ -53,6 +53,11 @@ function disc(c: Ctx, color: string, cx: number, cy: number, r: number) {
 
 // ---- The shop -------------------------------------------------------------
 
+/** The computer's full width, including the printer and mouse beside the monitor. */
+export const COMPUTER_SPRITE_W = 55;
+/** Where the monitor's centre sits inside the computer sprite. */
+export const MONITOR_CENTRE_X = 23;
+
 /** Height of the two-line label along the bottom of each shelf. */
 export const SHELF_LABEL_H = 18;
 
@@ -167,84 +172,283 @@ function drawShop(scene: Phaser.Scene) {
     }
   });
 
-  // Till: a chunky machine standing on the counter, rising above its top edge
-  canvasTexture(scene, 'till', 40, 54, (c) => {
-    // Screen on a stalk
-    rect(c, '#2c2a33', 12, 0, 22, 15);
-    rect(c, '#3b3a44', 13, 1, 20, 13);
-    rect(c, '#123c3d', 15, 3, 16, 8);
-    rect(c, '#9df0b0', 17, 5, 9, 2);
-    rect(c, '#58b58a', 17, 8, 6, 1);
-    rect(c, '#2c2a33', 20, 15, 6, 4);
-    rect(c, '#1f6a68', 21, 15, 4, 4);
-    // Sloping keypad body
-    rect(c, '#2c2a33', 1, 18, 38, 22);
-    rect(c, '#2f8f8c', 2, 19, 36, 20);
-    rect(c, '#4bb5b0', 2, 19, 36, 2);
-    rect(c, '#24757a', 33, 21, 5, 18);
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 4; col++) {
-        rect(c, '#14454a', 5 + col * 6, 23 + row * 5, 5, 4);
-        rect(c, col === 3 ? '#ffc65c' : '#fbf1d8', 5 + col * 6, 23 + row * 5, 5, 3);
+  drawTill(scene);
+  drawComputer(scene);
+  drawTerminal(scene);
+}
+
+// ---- Counter equipment ------------------------------------------------------
+
+const INK = '#1b1d28';
+const COUNTER_SHADOW = 'rgba(74, 42, 16, 0.32)';
+
+/** A filled box with its four corners clipped, which reads as rounded at this size. */
+function rounded(c: Ctx, color: string, x: number, y: number, w: number, h: number) {
+  rect(c, color, x + 1, y, w - 2, h);
+  rect(c, color, x, y + 1, w, h - 2);
+}
+
+const TINY_GLYPHS: Record<string, string> = {
+  $: '.##|#..|.#.|..#|##.',
+  '.': '.|.|.|.|#',
+  0: '###|#.#|#.#|#.#|###',
+  1: '.#.|##.|.#.|.#.|###',
+  2: '##.|..#|.#.|#..|###',
+  3: '##.|..#|.#.|..#|##.',
+  4: '#.#|#.#|###|..#|..#',
+  5: '###|#..|##.|..#|##.',
+  6: '.##|#..|###|#.#|###',
+  7: '###|..#|.#.|.#.|.#.',
+  8: '###|#.#|###|#.#|###',
+  9: '###|#.#|###|..#|##.',
+};
+
+/** Three-by-five digits for the printing on the machines. Too small to use for game text. */
+function tinyText(c: Ctx, color: string, x: number, y: number, text: string) {
+  let cx = x;
+  for (const ch of text) {
+    const rows = TINY_GLYPHS[ch].split('|');
+    rows.forEach((row, ry) => [...row].forEach((on, rx) => { if (on === '#') rect(c, color, cx + rx, y + ry, 1, 1); }));
+    cx += ch === '.' ? 2 : 4;
+  }
+}
+
+/** Register: teal body on a steel cash drawer, with a customer display on a pole. */
+function drawTill(scene: Phaser.Scene) {
+  canvasTexture(scene, 'till', 48, 59, (c) => {
+    // Customer display on its pole
+    rect(c, '#2f3540', 27, 11, 5, 4);
+    rect(c, '#475060', 28, 11, 1, 4);
+    rounded(c, '#3e8fa8', 18, 1, 23, 11);
+    rect(c, '#73c4d2', 19, 1, 21, 1);
+    rect(c, '#2a6a84', 19, 10, 21, 2);
+    rect(c, '#14232c', 20, 3, 19, 7);
+    tinyText(c, '#8ee05a', 21, 4, '$0.00');
+
+    // Sloping teal body, narrower at the top
+    for (let y = 14; y < 41; y++) {
+      const inset = Math.max(0, Math.round((30 - y) / 6));
+      rect(c, '#4f9d94', 3 + inset, y, 38 - inset * 2, 1);
+    }
+    rect(c, '#88d1b4', 6, 14, 32, 1);
+    rect(c, '#2e7f86', 26, 15, 8, 1);
+    rect(c, '#3b8a88', 4, 37, 36, 1);
+    rect(c, '#2d7078', 3, 38, 38, 3);
+    rect(c, '#62b0a2', 3, 37, 1, 1);
+
+    // Receipt coming out of the printer
+    rect(c, '#2a3038', 5, 17, 13, 2);
+    rect(c, '#8f97a0', 5, 27, 13, 5);
+    rect(c, '#c2c8cc', 5, 27, 13, 1);
+    rect(c, '#f4efe0', 7, 18, 9, 12);
+    rect(c, '#d4cdb8', 15, 18, 1, 12);
+    for (let ry = 20; ry < 29; ry += 2) {
+      rect(c, '#807a6e', 8, ry, ry % 4 === 0 ? 4 : 3, 1);
+      rect(c, '#807a6e', 13, ry, 1, 1);
+    }
+
+    // Main display
+    rect(c, '#2a6a74', 18, 16, 21, 8);
+    rect(c, '#14232c', 19, 16, 19, 7);
+    tinyText(c, '#8ee05a', 20, 17, '$0.00');
+
+    // Keys: peach digits with a yellow and sage row, and red, orange and tall green on the right
+    const key = (x: number, y: number, w: number, h: number, colour: string, shine: string, shade: string) => {
+      rect(c, shade, x, y, w, h);
+      rect(c, colour, x, y, w, h - 1);
+      rect(c, shine, x, y, w, 1);
+    };
+    const digit = ['#f0b064', '#ffd9a0', '#a8703c'];
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 3; col++) {
+        let tone = digit;
+        if (row === 0 && col === 0) tone = ['#f4c430', '#ffe67c', '#a87c1c'];
+        if (col === 2 && row < 2) tone = ['#a8c0a0', '#d0e0c4', '#6c8470'];
+        key(19 + col * 5, 25 + row * 3, 4, 3, tone[0], tone[1], tone[2]);
       }
     }
-    rect(c, '#ef6f5e', 30, 23, 3, 3);
-    // Cash drawer
-    rect(c, '#2c2a33', 0, 40, 40, 14);
-    rect(c, '#1f6a68', 1, 41, 38, 12);
-    rect(c, '#2f8f8c', 1, 41, 38, 2);
-    rect(c, '#123c3d', 15, 45, 10, 2);
-    rect(c, '#fbf1d8', 18, 49, 4, 2);
-  });
+    key(34, 25, 4, 3, '#e04c3c', '#f88070', '#90281c');
+    key(34, 28, 4, 3, '#ec9430', '#ffc060', '#a4601c');
+    key(34, 31, 4, 6, '#4fb044', '#8ce070', '#2a7428');
 
-  // Beige desktop computer: a big CRT with its keyboard in front
-  canvasTexture(scene, 'computer', 50, 60, (c) => {
-    rect(c, '#2c2a33', 0, 0, 50, 40);
-    rect(c, '#e6dcc2', 1, 1, 48, 38);
-    rect(c, '#f6efdb', 1, 1, 48, 2);
-    rect(c, '#c3b89c', 44, 3, 5, 36);
-    rect(c, '#c3b89c', 1, 35, 48, 4);
-    rect(c, '#2c2a33', 4, 4, 41, 29);
-    rect(c, '#123c30', 5, 5, 39, 27);
-    rect(c, '#1c5243', 5, 5, 39, 2);
-    rect(c, '#9df0b0', 40, 36, 2, 2);
-    rect(c, '#8c8069', 6, 36, 12, 1);
+    // Two big buttons under the receipt
+    key(6, 33, 5, 4, '#f4c430', '#ffe67c', '#a87c1c');
+    key(12, 33, 5, 4, '#ec7a30', '#ffac60', '#a4481c');
+
+    // Steel base and cash drawer, with its lock and key
+    rect(c, '#3a3d46', 0, 41, 44, 15);
+    rect(c, '#5a5e68', 0, 41, 44, 1);
+    rect(c, '#9ea3ab', 3, 44, 38, 9);
+    rect(c, '#d0d4d8', 3, 44, 38, 1);
+    rect(c, '#747982', 3, 52, 38, 1);
+    rect(c, '#23262e', 7, 47, 9, 2);
+    rect(c, '#23262e', 28, 47, 9, 2);
+    rect(c, '#e8ecee', 31, 45, 1, 1);
+    rect(c, '#e8ecee', 30, 46, 1, 1);
+    disc(c, '#3a3d46', 22, 48, 3);
+    disc(c, '#b8bcc2', 22, 48, 2);
+    rect(c, '#23262e', 22, 46, 1, 5);
+    rect(c, '#23262e', 21, 51, 3, 3);
+    rect(c, '#777c84', 22, 52, 1, 3);
+    rect(c, '#23262e', 2, 56, 4, 1);
+    rect(c, '#23262e', 38, 56, 4, 1);
+
+    outline(c, 48, 59, INK);
+    // Soft shadow on the counter, added last so it doesn't get an outline
+    rect(c, COUNTER_SHADOW, 45, 44, 3, 13);
+    rect(c, COUNTER_SHADOW, 2, 58, 44, 1);
+  });
+}
+
+/** Grey monitor showing the shop screen, with a keyboard, mouse and receipt printer. */
+function drawComputer(scene: Phaser.Scene) {
+  canvasTexture(scene, 'computer', COMPUTER_SPRITE_W, 60, (c) => {
     // Stand
-    rect(c, '#2c2a33', 17, 40, 16, 5);
-    rect(c, '#bdb296', 18, 40, 14, 4);
-    // Keyboard
-    rect(c, '#2c2a33', 2, 45, 46, 15);
-    rect(c, '#e6dcc2', 3, 46, 44, 13);
-    rect(c, '#f6efdb', 3, 46, 44, 1);
-    for (let ky = 0; ky < 3; ky++) {
-      for (let kx = 0; kx < 10; kx++) rect(c, '#8f8772', 5 + kx * 4, 48 + ky * 3, 3, 2);
-    }
-    rect(c, '#8f8772', 14, 57, 20, 1);
-  });
+    rect(c, '#2e3138', 17, 33, 12, 5);
+    rect(c, '#44474f', 18, 33, 3, 4);
+    rounded(c, '#3a3d45', 12, 37, 22, 3);
+    rect(c, '#555861', 13, 37, 20, 1);
 
-  // Card terminal that comes up on the counter
-  canvasTexture(scene, 'terminal', 46, 56, (c) => {
-    rect(c, '#2c2a33', 0, 0, 46, 56);
-    rect(c, '#46505c', 1, 1, 44, 54);
-    rect(c, '#5e6a78', 1, 1, 44, 2);
-    rect(c, '#343c46', 41, 3, 4, 52);
-    rect(c, '#2c2a33', 4, 5, 38, 18);
-    rect(c, '#10231c', 5, 6, 36, 16);
-    // The same keys as the keypad on screen: digits, CLR, 0, DEL and a tall OK
-    const key = (x: number, y: number, w: number, h: number, colour: string, shine: string) => {
-      rect(c, '#222830', x, y, w, h + 1);
+    // Monitor
+    rounded(c, '#6c7078', 1, 1, 44, 32);
+    rect(c, '#a4a8ae', 2, 1, 42, 1);
+    rect(c, '#555860', 1, 29, 44, 3);
+    rect(c, '#2d3036', 3, 3, 40, 26);
+    rect(c, '#68d0ea', 4, 4, 38, 24);
+    rect(c, '#6ee04a', 36, 30, 2, 1);
+
+    // The screen's right side: blue, with SHOP in a brighter panel and a chart below
+    rect(c, '#2f62c0', 5, 5, 36, 22);
+    rect(c, '#2f8a48', 34, 5, 3, 2);
+    rect(c, '#d84a4a', 38, 5, 3, 2);
+    rect(c, '#3f7ce0', 15, 8, 26, 10);
+    rect(c, '#6ea4f0', 15, 8, 26, 1);
+    disc(c, '#60cc40', 21, 22, 3);
+    rect(c, '#f05878', 21, 19, 2, 1);
+    rect(c, '#f05878', 21, 20, 3, 1);
+    rect(c, '#f05878', 21, 21, 4, 1);
+    [[26, 20], [26, 22], [26, 24]].forEach(([lx, ly], i) => {
+      rect(c, ['#60cc40', '#f05878', '#60cc40'][i], lx, ly, 1, 1);
+      rect(c, '#9cd8f4', lx + 2, ly, i === 1 ? 9 : 12, 1);
+    });
+
+    // The screen's left side: the check-out list
+    rect(c, '#e0f4dc', 5, 5, 9, 22);
+    rect(c, '#2d3036', 6, 6, 7, 1);
+    rect(c, '#a8b4a8', 5, 8, 9, 1);
+    for (let ly = 10; ly < 20; ly += 2) {
+      rect(c, '#2f8a48', 6, ly, 1, 1);
+      rect(c, '#8a948c', 8, ly, ly % 4 === 0 ? 2 : 3, 1);
+      rect(c, '#8a948c', 12, ly, 1, 1);
+    }
+    rect(c, '#a8b4a8', 5, 22, 9, 1);
+    rect(c, '#e04848', 9, 24, 4, 2);
+
+    // Keyboard
+    rounded(c, '#464a50', 1, 42, 39, 16);
+    rect(c, '#6a6e74', 2, 42, 37, 1);
+    rect(c, '#2e3138', 2, 56, 37, 1);
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 12; col++) {
+        const kx = 3 + col * 3 - (row % 2);
+        if (kx < 3) continue;
+        rect(c, '#d4d6c4', kx, 44 + row * 3, 2, 2);
+        rect(c, '#9ca092', kx, 45 + row * 3, 2, 1);
+      }
+    }
+    rect(c, '#e8e8d8', 11, 53, 15, 2);
+    rect(c, '#b0b2a4', 11, 54, 15, 1);
+
+    // Mouse
+    rounded(c, '#4f5259', 43, 47, 7, 10);
+    rect(c, '#2d3036', 46, 48, 1, 3);
+    rect(c, '#73767d', 44, 47, 2, 1);
+    rect(c, '#383b42', 44, 55, 5, 1);
+
+    // Receipt printer in front of the monitor's corner
+    rect(c, '#f4efe0', 44, 23, 8, 8);
+    rect(c, '#807a6e', 45, 25, 5, 1);
+    rect(c, '#807a6e', 45, 27, 6, 1);
+    rect(c, '#807a6e', 45, 29, 4, 1);
+    rect(c, '#555860', 42, 31, 12, 11);
+    rect(c, '#7a7d84', 42, 31, 12, 1);
+    rect(c, '#23262e', 43, 33, 10, 1);
+    rect(c, '#6ee04a', 51, 38, 1, 1);
+
+    outline(c, COMPUTER_SPRITE_W, 60, INK);
+    rect(c, COUNTER_SHADOW, 2, 59, 38, 1);
+  });
+}
+
+/** Card terminal: a blue handset on its dock, with a card pushed into the bottom. */
+function drawTerminal(scene: Phaser.Scene) {
+  canvasTexture(scene, 'terminal', 54, 62, (c) => {
+    // Curled cable on the left and the dock showing on the right
+    rect(c, '#5c6068', 2, 40, 3, 1);
+    rect(c, '#5c6068', 1, 41, 1, 6);
+    rect(c, '#5c6068', 2, 47, 2, 1);
+    rect(c, '#5c6068', 3, 48, 2, 6);
+    rect(c, '#44474f', 49, 14, 3, 34);
+    rect(c, '#62656d', 49, 14, 1, 34);
+
+    // Body
+    rounded(c, '#3a6aa8', 5, 1, 44, 54);
+    rect(c, '#6aa2d4', 6, 1, 42, 1);
+    rect(c, '#5a90c8', 5, 2, 1, 50);
+    rect(c, '#2b4e80', 47, 2, 2, 51);
+    rect(c, '#62c0d0', 6, 52, 41, 1);
+    rect(c, '#2b4e80', 6, 53, 41, 2);
+
+    // Dark faceplate: contactless mark, screen and four soft keys
+    rounded(c, '#30323a', 7, 2, 40, 21);
+    const wave = '#6cd8c0';
+    rect(c, wave, 26, 5, 2, 1);
+    [[24, 4], [23, 5], [24, 6], [21, 3], [20, 4], [20, 5], [20, 6], [21, 7]].forEach(([wx, wy]) => {
+      rect(c, wave, wx, wy, 1, 1);
+      rect(c, wave, 53 - wx, wy, 1, 1);
+    });
+    rect(c, '#1c1e24', 8, 8, 38, 10);
+    rect(c, '#94a49e', 9, 8, 36, 10);
+    for (let sy = 9; sy < 18; sy += 2) rect(c, '#8a9a94', 9, sy, 36, 1);
+    [[10, '#eda43a'], [18, '#eda43a'], [28, '#9096a0'], [36, '#9096a0']].forEach(([kx, tone]) => rect(c, tone as string, kx as number, 20, 7, 2));
+
+    // The same layout as the keypad on screen: digits, CLR, 0, DEL and a tall OK
+    const key = (x: number, y: number, w: number, h: number, colour: string, shine: string, shade: string) => {
+      rect(c, shade, x, y, w, h + 1);
       rect(c, colour, x, y, w, h);
       rect(c, shine, x, y, w, 1);
     };
-    for (let row = 0; row < 4; row++) {
+    for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 3; col++) {
-        const [colour, shine] = row < 3 || col === 1 ? ['#3a6a88', '#5f8ca6'] : col === 0 ? ['#7d3a30', '#a65a4e'] : ['#8c6d28', '#b5934a'];
-        key(4 + col * 9, 25 + row * 7, 8, 5, colour, shine);
+        const kx = 8 + col * 10;
+        const ky = 24 + row * 7;
+        key(kx, ky, 9, 6, '#e6e4d2', '#fafaec', '#7a7c74');
+        tinyText(c, '#30323a', kx + 1, ky + 1, String(row * 3 + col + 1));
+        rect(c, '#9a9c90', kx + 5, ky + 3, 3, 1);
       }
     }
-    key(31, 25, 10, 26, '#1f9c8a', '#4fc4b2');
-    // Card reader slot along the bottom
-    rect(c, '#14181c', 6, 53, 34, 1);
+    key(8, 45, 9, 6, '#d84a3c', '#f47e70', '#842218');
+    key(18, 45, 9, 6, '#e6e4d2', '#fafaec', '#7a7c74');
+    tinyText(c, '#30323a', 19, 46, '0');
+    rect(c, '#9a9c90', 23, 48, 3, 1);
+    key(28, 45, 9, 6, '#f2b82e', '#ffdc70', '#94701a');
+    key(38, 24, 8, 27, '#4fae3c', '#8ae068', '#266e24');
+    rect(c, '#e8f8dc', 43, 34, 1, 5);
+    rect(c, '#e8f8dc', 40, 38, 4, 1);
+    rect(c, '#e8f8dc', 41, 37, 1, 3);
+
+    // The card pushed into the bottom
+    rect(c, '#1c1e24', 13, 55, 28, 1);
+    rect(c, '#e6c490', 14, 56, 26, 5);
+    rect(c, '#f4dcb0', 14, 56, 26, 1);
+    disc(c, '#e8483c', 19, 58, 1);
+    rect(c, '#f4a820', 18, 60, 3, 1);
+    rect(c, '#faf4e0', 26, 57, 1, 1);
+    rect(c, '#faf4e0', 26, 59, 1, 1);
+    rect(c, '#e8483c', 32, 57, 3, 4);
+    rect(c, '#3ca0b8', 35, 57, 1, 4);
+
+    outline(c, 54, 62, INK);
   });
 }
 

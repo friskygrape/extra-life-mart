@@ -46,6 +46,9 @@ interface DeskPiece {
   hit: Phaser.GameObjects.Rectangle;
 }
 
+/** Dark digits on the terminal's grey-green screen. */
+const TERMINAL_INK = 0x1a2a26;
+
 export class RegisterScene extends Phaser.Scene {
   private info!: RegisterData;
   private total = 0;
@@ -435,7 +438,7 @@ export class RegisterScene extends Phaser.Scene {
     const restY = L.counterBottom - 34;
     // Tapping the terminal itself shouldn't count as tapping outside.
     const body = this.add.image(0, 0, 'terminal').setInteractive();
-    this.displayText = label(this, 16, -18, '$0.00', COLOURS.green, 'right');
+    this.displayText = label(this, 17, -22, '$0.00', TERMINAL_INK, 'right');
     const terminal = this.add.container(x, restY + 70, [body, this.displayText]).setDepth(-1);
     this.terminal = terminal;
     sfx.pop();
