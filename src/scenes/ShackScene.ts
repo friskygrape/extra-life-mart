@@ -1,14 +1,15 @@
 import Phaser from 'phaser';
-import { getProduct, shelfLabelLines } from '../data/products';
+import { getProduct, shelfLabelName } from '../data/products';
+import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { CALENDAR_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, MONITOR_CENTRE_X, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_W, columnX } from '../art/textures';
+import { CALENDAR_GRID, CALENDAR_H, CALENDAR_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, ITEM_H, ITEM_W, MONITOR_CENTRE_X, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
 import { eventOnDay } from '../data/events';
 import { pickGreeting } from '../logic/dialogue';
-import { isRentDay, weekOf, weekdayIndex, weekdayName } from '../logic/calendar';
+import { calendarHeading, isRentDay, weekOf, weekdayIndex } from '../logic/calendar';
 import { EMPTY_SHELVES_POINTS, MAX_STARS, MISSED_SALE_POINTS, SLOW_TIMES, changeReputation, greatServiceSeconds, stars } from '../logic/reputation';
 import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
 import { lightingAt } from '../logic/clock';
@@ -21,7 +22,7 @@ import { customerTender, formatCents, roundToNickel } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
 import { session } from '../session';
-import { BUTTONS, Button, COLOURS, button, drawPaper, label } from '../ui';
+import { BUBBLE_PAD, BUTTONS, Button, COLOURS, button, drawBubble, drawPaper, label, tinyLabel } from '../ui';
 
 const TABLE_CAPACITY = 4;
 const DELIVERY_SECONDS = 3;
@@ -48,9 +49,18 @@ const EMPTY_HANDED_MS = 2600;
 const greetingMs = (text: string) => Math.min(3000, 1100 + text.length * 30);
 /** How many of their lines to remember, so they don't repeat themselves straight away. */
 const RECENT_LINES = 30;
-const NAME_INK = 0x9a5b00;
+const NAME_INK = 0x1b6c74;
+const CALENDAR_HEADER = 0x1b6c74;
+const CALENDAR_FUTURE = 0xfdf3da;
+const CALENDAR_PAST = 0xa9dcc8;
+const CALENDAR_TODAY = 0x1f9c8a;
+const SHELF_PLUS = 0x8a5a34;
+const MORE_SHELVES_INK = 0x1b3346;
+/** How much of a shelf's glow remains while its light blinks off. */
+const SHELF_LIGHT_OFF = 0.12;
+
 /** Where the calendar and TV hang, clear of the menu button, the bubble and the receipt. */
-const wallY = () => L.hudH + 8;
+const wallY = wallTop;
 const TIP_BAR_W = 40;
 const RAIN_DROPS = 36;
 const TV_FRAME_MS = 420;
@@ -157,8 +167,9 @@ export class ShackScene extends Phaser.Scene {
   private tvScreen!: Phaser.GameObjects.Image;
   private tvFrame = 0;
   private calendarDay!: Phaser.GameObjects.BitmapText;
-  private calendarWeek!: Phaser.GameObjects.BitmapText;
-  private calendarDots: Phaser.GameObjects.Rectangle[] = [];
+    private calendarHeader!: Phaser.GameObjects.Rectangle;
+  private calendarCells: Phaser.GameObjects.Rectangle[][] = [];
+  private shelfLights = new Map<string, Phaser.GameObjects.Image>();
   private starIcons: Phaser.GameObjects.Image[] = [];
   private tipBar!: Phaser.GameObjects.Rectangle;
   private tipBarBack!: Phaser.GameObjects.Rectangle;
@@ -190,7 +201,8 @@ export class ShackScene extends Phaser.Scene {
     this.nightScene = this.add.image(sceneX, sceneY, 'beach_night').setOrigin(0).setDepth(0.2).setAlpha(0);
     this.portrait = this.add.image(-PORTRAIT_OFFSCREEN, windowY + windowH, 'cust_0').setOrigin(0.5, 1).setDepth(2);
     this.shutter = this.add.image(windowX, windowY, 'shutter').setOrigin(0).setDepth(3);
-    this.closedSign = label(this, windowX + Math.floor(windowW / 2), windowY + Math.floor(windowH / 2) - 4, 'CLOSED', COLOURS.white, 'center').setDepth(3.5);
+    this.add.image(windowX, windowY, 'window_doors').setOrigin(0).setDepth(1);
+    this.closedSign = label(this, windowX + Math.floor(windowW / 2), windowY + Math.floor(windowH / 2) - 4, 'CLOSED', COLOURS.ink, 'center').setDepth(3.5);
     this.add.image(0, 0, 'shop').setOrigin(0).setDepth(4);
     this.warmLight = this.add.rectangle(0, 0, W, L.H, 0xffa050, 0).setOrigin(0).setDepth(4.05);
 
@@ -215,10 +227,9 @@ export class ShackScene extends Phaser.Scene {
       });
 
     this.bubble = this.add.graphics().setDepth(5).setVisible(false);
-    this.bubbleTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
+    this.bubbleTail = this.add.image(0, 0, 'bubble_tail').setOrigin(0).setDepth(5.2).setVisible(false);
     this.speech = this.add.graphics().setDepth(5).setVisible(false);
-    this.speechTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
-    label(this, windowX + Math.floor(windowW / 2), L.signY + 2, 'EXTRA LIFE MART', COLOURS.white, 'center').setDepth(5);
+    this.speechTail = this.add.image(0, 0, 'bubble_tail').setOrigin(0).setDepth(5.2).setVisible(false);
     this.buildStars();
     this.buildWeather();
     this.buildTv();
@@ -228,7 +239,7 @@ export class ShackScene extends Phaser.Scene {
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
     // A little past the top edge, so rounding can't leave a sliver of the beach showing.
-    this.add.rectangle(0, -4, W, L.hudH + 4, COLOURS.bg).setOrigin(0).setDepth(6);
+    this.add.image(0, -4, 'hud_bar').setOrigin(0).setDepth(6);
     const hudText = L.hudH - 11;
     this.add.image(11, L.hudH - 8, 'menu_icon').setDepth(7);
     this.dayText = label(this, 23, hudText, '').setDepth(7);
@@ -243,6 +254,7 @@ export class ShackScene extends Phaser.Scene {
     this.moneyText = label(this, W - 4, hudText, '', COLOURS.gold, 'right').setDepth(7);
 
     SHELF_SLOTS.forEach((slot) => {
+      this.shelfLights.set(slot.id, this.add.image(slotLeft(slot), slotTop(slot), shelfGlowKey(slotWidth(slot))).setOrigin(0).setDepth(4.1));
       this.add.rectangle(slotLeft(slot), slotTop(slot), slotWidth(slot), L.rowH, 0xffffff, 0)
         .setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
         .on('pointerup', () => this.tapSlot(slot));
@@ -267,6 +279,7 @@ export class ShackScene extends Phaser.Scene {
       if (rush) this.deliveryIn = DELIVERY_SECONDS;
       this.finishComputerTip();
     });
+    this.scheduleFlicker();
     this.beginDay();
     // A game that ended stays ended, even after a refresh.
     if (session.state.closed) {
@@ -307,7 +320,7 @@ export class ShackScene extends Phaser.Scene {
     const noteW = GUIDE_NOTE_W;
     const arrowX = step === 'sign' ? L.windowX + Math.floor(L.windowW / 2) : columnX(1) + Math.floor((columnX(2) - columnX(1)) / 2);
     // Beside the arrow, staying clear of the till on the left and the computer on the right.
-    const noteX = Math.max(46, Math.min(L.W - 52 - noteW, arrowX - Math.floor(noteW / 2)));
+    const noteX = Math.max(52, Math.min(L.W - COMPUTER_W - 3 - noteW, arrowX - Math.floor(noteW / 2)));
     if (step === 'sign') {
       // Below the sign, pointing up at it.
       const arrowY = L.windowY + Math.floor(L.windowH / 2) + 12 + arrowH / 2;
@@ -381,7 +394,7 @@ export class ShackScene extends Phaser.Scene {
     const gap = 8;
     const left = L.windowX + Math.floor(L.windowW / 2) - Math.floor((gap * MAX_STARS - 1) / 2);
     for (let i = 0; i < MAX_STARS; i++) {
-      this.starIcons.push(this.add.image(left + i * gap, L.signY + 11, 'star_off').setOrigin(0).setDepth(5));
+      this.starIcons.push(this.add.image(left + i * gap, L.signY + 15, 'star_off').setOrigin(0).setDepth(5));
     }
   }
 
@@ -401,8 +414,8 @@ export class ShackScene extends Phaser.Scene {
     const x = L.W - TV_W - 1;
     const y = wallY();
     this.add.image(x, y, 'tv').setOrigin(0).setDepth(4.5);
-    this.tvScreen = this.add.image(x + 4, y + 5, 'tv_sunny_0').setOrigin(0).setDepth(4.55);
-    label(this, x + Math.floor(TV_W / 2), y + TV_H - 8, 'TMRW', COLOURS.white, 'center').setDepth(4.6);
+    this.tvScreen = this.add.image(x + TV_SCREEN_X, y + TV_SCREEN_Y, 'tv_sunny_0').setOrigin(0).setDepth(4.55);
+    label(this, x + Math.floor(TV_W / 2) + 1, y + 8, 'TMRW', COLOURS.white, 'center').setDepth(4.6);
     this.time.addEvent({
       delay: TV_FRAME_MS,
       loop: true,
@@ -424,26 +437,38 @@ export class ShackScene extends Phaser.Scene {
     const y = wallY();
     const centre = x + Math.floor(CALENDAR_W / 2);
     this.add.image(x, y, 'calendar').setOrigin(0).setDepth(4.5);
-    this.calendarDay = label(this, centre, y + 2, '', COLOURS.white, 'center').setDepth(4.6);
-    this.calendarWeek = label(this, centre, y + 11, '', COLOURS.ink, 'center').setDepth(4.6);
-    for (let i = 0; i < 7; i++) {
-      this.calendarDots.push(this.add.rectangle(x + 2 + i * 4, y + 22, 2, 3, COLOURS.ink).setOrigin(0).setDepth(4.6));
+    this.calendarHeader = this.add.rectangle(x + 1, y + 2, CALENDAR_W - 2, 8, CALENDAR_HEADER).setOrigin(0).setDepth(4.55);
+    this.calendarDay = tinyLabel(this, centre, y + 4, '', COLOURS.white, 'center').setDepth(4.6);
+    const { x: gridX, y: gridY, cell, gap, rows } = CALENDAR_GRID;
+    for (let row = 0; row < rows; row++) {
+      const cells: Phaser.GameObjects.Rectangle[] = [];
+      for (let col = 0; col < 7; col++) {
+        cells.push(this.add.rectangle(x + gridX + col * (cell + gap), y + gridY + row * (cell + gap), cell, cell, 0xffffff).setOrigin(0).setDepth(4.6));
+      }
+      this.calendarCells.push(cells);
     }
-    this.add.rectangle(x, y, CALENDAR_W, 28, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+    this.add.rectangle(x, y, CALENDAR_W, CALENDAR_H, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => this.openModal('Calendar'));
   }
 
   private refreshInfoBoard() {
     const { day, weather, forecast, rentBehind } = session.state;
-    this.calendarDay.setText(weekdayName(day));
-    this.calendarWeek.setText(weekOf(day) < 10 ? `WK ${weekOf(day)}` : `WK${weekOf(day)}`).setTint(rentBehind > 0 ? RENT_RED : COLOURS.ink);
+    const week = weekOf(day);
+    this.calendarDay.setText(calendarHeading(day));
+    this.calendarHeader.setFillStyle(rentBehind > 0 ? 0xc9402f : CALENDAR_HEADER);
+    // The grid shows this month's weeks as they really are, with this week moving down a row each Monday.
     const today = weekdayIndex(day);
     const monday = day - today;
-    this.calendarDots.forEach((dot, i) => {
-      const date = monday + i;
-      const colour = isRentDay(date) ? RENT_RED : eventOnDay(date) ? 0x2f8fc4 : COLOURS.ink;
-      dot.setFillStyle(colour, i < today ? 0.25 : 1).setSize(2, i === today ? 5 : 3).setY(wallY() + (i === today ? 20 : 22));
-    });
+    const thisRow = (week - 1) % CALENDAR_GRID.rows;
+    this.calendarCells.forEach((cells, row) => cells.forEach((cell, col) => {
+      const date = monday + (row - thisRow) * 7 + col;
+      let colour = CALENDAR_FUTURE;
+      if (date < day) colour = CALENDAR_PAST;
+      else if (date === day) colour = CALENDAR_TODAY;
+      else if (isRentDay(date)) colour = RENT_RED;
+      else if (eventOnDay(date)) colour = 0x2f8fc4;
+      cell.setFillStyle(colour);
+    }));
     this.tvScreen.setTexture(`tv_${forecast}_${this.tvFrame}`);
     const tint = WEATHER_TINT[weather];
     this.weatherTint.setFillStyle(tint.colour, tint.alpha);
@@ -516,7 +541,6 @@ export class ShackScene extends Phaser.Scene {
   // ---- Shelves and table --------------------------------------------------
 
   private refreshShelves() {
-    const iconRows = Math.max(1, Math.floor((L.rowH - SHELF_LABEL_H - 4) / 16));
     for (const slot of SHELF_SLOTS) {
       this.slotArt.get(slot.id)?.forEach((o) => o.destroy());
       this.slotArt.delete(slot.id);
@@ -528,19 +552,16 @@ export class ShackScene extends Phaser.Scene {
       const w = slotWidth(slot);
       const labelY = y + L.rowH - SHELF_LABEL_H;
       if (shelf.productId && shelf.qty > 0) {
-        const shown = Math.min(shelf.qty, 3 * iconRows);
-        const left = x + Math.floor((w - 48) / 2);
-        for (let i = 0; i < shown; i++) {
-          const ix = left + (i % 3) * 16;
-          const iy = labelY - 18 - Math.floor(i / 3) * 16;
-          art.push(this.add.image(ix, iy, `item_${shelf.productId}`).setOrigin(0).setDepth(5 + 0.2 - i * 0.001));
+        // A neat row of up to three. The plate underneath gives the exact count.
+        const left = x + Math.floor((w - ITEM_W * 3) / 2);
+        for (let i = 0; i < Math.min(shelf.qty, 3); i++) {
+          art.push(this.add.image(left + i * ITEM_W, labelY - 2 - ITEM_H, `item_${shelf.productId}`).setOrigin(0).setDepth(5.2));
         }
-        const [first, second] = shelfLabelLines(getProduct(shelf.productId).name);
-        art.push(label(this, x + 3, labelY + 1, first, COLOURS.ink).setDepth(6));
-        if (second) art.push(label(this, x + 3, labelY + 9, second, COLOURS.ink).setDepth(6));
-        art.push(label(this, x + w - 3, labelY + 9, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
+        const name = shelfLabelName(getProduct(shelf.productId).name, shelf.qty, w - 6);
+        art.push(tinyLabel(this, x + 3, labelY + 3, name, COLOURS.ink).setDepth(6));
+        art.push(tinyLabel(this, x + w - 3, labelY + 3, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
       } else {
-        art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - SHELF_LABEL_H - 7) / 2), '+', COLOURS.white, 'center').setDepth(6).setAlpha(0.7));
+        art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - SHELF_LABEL_H - 7) / 2), '+', SHELF_PLUS, 'center').setDepth(6));
       }
       this.slotArt.set(slot.id, art);
     }
@@ -554,10 +575,30 @@ export class ShackScene extends Phaser.Scene {
     const { rowsOwned } = session.state;
     for (let row = rowsOwned; row < SHELF_ROWS; row++) {
       const y = L.shelfTop + row * L.rowH;
-      this.rowArt.push(this.add.image(0, y, 'boards').setOrigin(0).setDepth(5));
       const price = row === rowsOwned ? nextRowPrice(session.state) : null;
-      const text = price ? `MORE SHELVES ${formatCents(price)}` : 'LOCKED';
-      this.rowArt.push(label(this, Math.floor(L.W / 2), y + Math.floor(L.rowH / 2) - 4, text, COLOURS.white, 'center').setDepth(6));
+      this.rowArt.push(this.add.image(0, y, price ? 'more_shelves_row' : 'locked_row').setOrigin(0).setDepth(5));
+      if (price) {
+        this.rowArt.push(label(this, Math.floor(L.W / 2), y + Math.floor(L.rowH / 2) - 4, `MORE SHELVES ${formatCents(price)}`, MORE_SHELVES_INK, 'center').setDepth(6));
+      }
+    }
+  }
+
+  /** Every so often, one lit shelf's light stutters. */
+  private scheduleFlicker() {
+    this.time.delayedCall(nextFlickerSeconds() * 1000, () => {
+      this.flickerRandomShelf();
+      this.scheduleFlicker();
+    });
+  }
+
+  private flickerRandomShelf() {
+    const owned = SHELF_SLOTS.filter((slot) => slot.row < session.state.rowsOwned);
+    const light = this.shelfLights.get(owned[Math.floor(Math.random() * owned.length)].id);
+    if (!light) return;
+    let wait = 0;
+    for (const step of flickerSteps()) {
+      this.time.delayedCall(wait, () => light.setAlpha(step.on ? 1 : SHELF_LIGHT_OFF));
+      wait += step.ms;
     }
   }
 
@@ -859,35 +900,37 @@ export class ShackScene extends Phaser.Scene {
     if (!visible) return;
 
     const put = (y: number, text: string, colour: number) => {
-      const t = label(this, bubbleX() + 3, y, text, colour).setDepth(6);
-      t.setMaxWidth(bubbleW() - 6);
+      const t = label(this, bubbleX() + BUBBLE_PAD, y, text, colour).setDepth(6);
+      t.setMaxWidth(bubbleW() - BUBBLE_PAD * 2);
       this.bubbleLines.push(t);
       return t;
     };
-    const place = (box: Phaser.GameObjects.Graphics, tail: Phaser.GameObjects.Image, top: number, bottom: number) => {
-      drawPaper(box, bubbleX(), top, bubbleW(), bottom - top, false);
+    const place = (box: Phaser.GameObjects.Graphics, tail: Phaser.GameObjects.Image, top: number, bottom: number, ruleY: number | null, showTail = true) => {
+      drawBubble(box, bubbleX(), top, bubbleW(), bottom - top, ruleY);
       box.setVisible(true);
-      tail.setPosition(bubbleX() + 1, bottom - 2).setVisible(true);
+      tail.setPosition(bubbleX() + 2, bottom - 3).setVisible(showTail);
     };
 
     // First they say hello, with their name at the top
     if (customer.greeting !== null) {
       const top = bubbleY();
-      put(top + 3, customer.name, NAME_INK);
-      const said = put(top + 13, customer.greeting, COLOURS.ink);
-      place(this.speech, this.speechTail, top, top + 13 + said.height + 2);
+      put(top + 4, customer.name, NAME_INK);
+      const said = put(top + 15, customer.greeting, COLOURS.ink);
+      place(this.speech, this.speechTail, top, top + 15 + said.height + 3, top + 12);
       return;
     }
 
     // The list: finished lines become a solid green row with a check mark
-    let y = this.receiptLines === null ? bubbleY() + 3 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 10;
+    const listTop = hasList ? this.listBubbleTop(requestLines(customer.wants, session.table).length) : bubbleY();
+    let y = this.receiptLines === null ? listTop + 4 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 11;
     if (hasList) {
       put(y, customer.name, NAME_INK);
+      const ruleY = y + 8;
       y += 11;
       requestLines(customer.wants, session.table).forEach((line) => {
         const name = getProduct(line.productId).name;
         if (line.done) {
-          const row = this.add.rectangle(bubbleX() + 2, y - 1, bubbleW() - 4, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
+          const row = this.add.rectangle(bubbleX() + 3, y - 1, bubbleW() - 6, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
           this.bubbleLines.push(row);
           put(y, `\u2713 ${name}`, COLOURS.white);
         } else {
@@ -895,16 +938,29 @@ export class ShackScene extends Phaser.Scene {
         }
         y += 11;
       });
-      place(this.bubble, this.bubbleTail, bubbleY(), y + 1);
-      y += 7;
+      // A bubble below takes over the tail, since the two would overlap.
+      place(this.bubble, this.bubbleTail, listTop, y + 2, ruleY, !this.spoken);
+      y += 9;
     }
 
     // Anything else they say goes in its own bubble below
-    const speechTop = y - 3;
+    const speechTop = y - 4;
     if (this.spoken) {
-      y += put(y, this.spoken, this.spokenColour).height + 2;
-      place(this.speech, this.speechTail, speechTop, y + 1);
+      const said = put(y, this.spoken, this.spokenColour);
+      y += said.height + 3;
+      place(this.speech, this.speechTail, speechTop, y, null);
     }
+  }
+
+  /** Normally level with the customer's face, but moves up if a comment below it would run into the counter's machines. */
+  private listBubbleTop(lines: number): number {
+    if (!this.spoken) return bubbleY();
+    const measure = label(this, 0, 0, this.spoken).setMaxWidth(bubbleW() - BUBBLE_PAD * 2);
+    const spokenH = measure.height;
+    measure.destroy();
+    const listH = 4 + 11 + lines * 11 + 2;
+    const commentH = 3 + 4 + spokenH + 3;
+    return Math.max(L.windowY + 3, Math.min(bubbleY(), L.counterTop - 8 - listH - commentH));
   }
 
   private pressAction() {
@@ -929,7 +985,7 @@ export class ShackScene extends Phaser.Scene {
     this.setDeskClear(true);
     this.receiptLines = Math.min(items.length, 4);
     // Moves up if needed, so the receipt and speech bubble stay clear of the things on the counter.
-    const speechH = 14;
+    const speechH = 18;
     this.receiptTop = Math.max(L.windowY + 8, Math.min(bubbleY(), L.counterTop - 20 - speechH - 8 - receiptHeight(this.receiptLines, customer.paidByCash)));
     this.renderBubble();
     this.openModal('Register', {

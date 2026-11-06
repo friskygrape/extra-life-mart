@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { L, drawerLayout } from '../layout';
+import { CHAR_W, GLYPHS, TINY_GLYPHS } from './font';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -53,89 +54,236 @@ function disc(c: Ctx, color: string, cx: number, cy: number, r: number) {
 
 // ---- The shop -------------------------------------------------------------
 
+/** Where the calendar and TV hang, just under the top bar. */
+export const wallTop = () => L.hudH + 6;
+
 /** The computer's full width, including the printer and mouse beside the monitor. */
 export const COMPUTER_SPRITE_W = 55;
 /** Where the monitor's centre sits inside the computer sprite. */
 export const MONITOR_CENTRE_X = 23;
 
-/** Height of the two-line label along the bottom of each shelf. */
-export const SHELF_LABEL_H = 18;
+// Storefront colours
+const WALL = '#3db4aa';
+const WALL_LIGHT = '#5ccabd';
+const WALL_DARK = '#2c9c97';
+const FRAME = '#2a8f92';
+const FRAME_LIGHT = '#7adccd';
+const FRAME_DARK = '#1b6c74';
+const CREAM = '#f4e3c0';
+const CREAM_LIGHT = '#fdf3da';
+const CREAM_SHADE = '#d6be95';
+const BUBBLE_PAPER = '#f7ebcf';
+const SHUTTER = '#6f94a2';
+const SHUTTER_LIGHT = '#8cadb8';
+const SHUTTER_DARK = '#4f7485';
 
-function drawShelfCubby(c: Ctx, rng: () => number, x: number, y: number, w: number, h: number) {
-  const inner = h - SHELF_LABEL_H - 2;
-  rect(c, '#b98a58', x, y, w, h);
-  rect(c, '#dcb483', x, y, w, 1);
-  rect(c, '#8a6240', x + 1, y + 1, w - 2, inner - 1);
-  rect(c, '#6f4d31', x + 1, y + 1, w - 2, 4);
-  for (let py = y + 9; py < y + inner; py += 8) rect(c, '#7d5838', x + 1, py, w - 2, 1);
-  speckle(c, rng, x + 1, y + 5, w - 2, Math.max(1, inner - 5), ['#7d5838', '#97703f'], 0.04);
-  rect(c, '#e3bf8e', x, y + inner, w, 2);
-  rect(c, '#fbf1d8', x + 1, y + h - SHELF_LABEL_H, w - 2, SHELF_LABEL_H - 1);
+/** Glazed teal wall tiles, laid like bricks. */
+function drawTiles(c: Ctx, x: number, y: number, w: number, h: number) {
+  rect(c, WALL, x, y, w, h);
+  for (let ty = 0; ty < h; ty += 9) {
+    rect(c, WALL_DARK, x, y + ty + 8, w, 1);
+    rect(c, WALL_LIGHT, x, y + ty, w, 1);
+    const offset = (ty / 9) % 2 === 0 ? 0 : 8;
+    for (let tx = offset; tx < w; tx += 16) rect(c, WALL_DARK, x + tx, y + ty, 1, 8);
+  }
+}
+
+/** Grey-blue roller shutter slats with some wear, used for the closed window and locked shelves. */
+function drawSlats(c: Ctx, rng: () => number, x: number, y: number, w: number, h: number) {
+  rect(c, SHUTTER, x, y, w, h);
+  for (let sy = 0; sy < h; sy += 6) {
+    rect(c, SHUTTER_LIGHT, x, y + sy, w, 1);
+    rect(c, SHUTTER_DARK, x, y + sy + 5, w, 1);
+  }
+  speckle(c, rng, x, y, w, h, ['#5f8494', '#9dbac2', '#84a2ad'], 0.05);
+}
+
+/** Height of the name plate along the bottom of each shelf, including the gap under it. */
+export const SHELF_LABEL_H = 14;
+
+/** Where the lit back wall of a shelf sits, measured from the shelf's corner. */
+function nicheBounds(w: number, h: number) {
+  const left = 3;
+  const top = 3;
+  const width = w - 6;
+  const floor = h - SHELF_LABEL_H - 4;
+  return { left, top, width, floor, backLeft: left + 4, backWidth: width - 8, backTop: top + 4 };
+}
+
+/** A modern recessed shelf with its light off. The glow goes on top, so it can flicker. */
+function drawShelfCubby(c: Ctx, x: number, y: number, w: number, h: number) {
+  const n = nicheBounds(w, h);
+  rounded(c, FRAME_DARK, x + 1, y + 1, w - 2, h - SHELF_LABEL_H + 1);
+  rounded(c, FRAME_LIGHT, x + 1, y + 1, w - 2, 2);
+  rect(c, CREAM, x + 2, y + 2, w - 4, h - SHELF_LABEL_H - 2);
+  // Side walls, then the back wall
+  rect(c, '#c8966a', x + n.left, y + n.top, n.width, n.floor - n.top + 4);
+  rect(c, '#d3a578', x + n.backLeft, y + n.backTop, n.backWidth, n.floor - n.backTop);
+  // Ceiling, narrowing towards the back
+  for (let i = 0; i < 4; i++) rect(c, i === 0 ? '#94683f' : '#a97b4f', x + n.left + i, y + n.top + i, n.width - i * 2, 1);
+  // Unlit fixture
+  rect(c, '#8a6a48', x + Math.floor(w / 2) - 7, y + n.top, 14, 2);
+  // Floor, widening towards the front
+  for (let i = 0; i < 4; i++) rect(c, i === 3 ? CREAM_LIGHT : '#f3e0ba', x + n.backLeft - i, y + n.floor + i, n.backWidth + i * 2, 1);
+  // Name plate
+  const plateY = y + h - SHELF_LABEL_H;
+  rounded(c, FRAME_DARK, x + 1, plateY, w - 2, 11);
+  rect(c, FRAME_LIGHT, x + 2, plateY, w - 4, 1);
+  rect(c, CREAM_LIGHT, x + 2, plateY + 1, w - 4, 9);
 }
 
 /** Left edge of a shelf column, so four columns always span the full width. */
 export const columnX = (col: number) => Math.round((col * L.W) / 4);
 
+/** Texture key for the glow of a shelf this wide. Column widths can differ by a pixel. */
+export const shelfGlowKey = (w: number) => `shelf_glow_${w}`;
+
+function drawShelfGlow(scene: Phaser.Scene, w: number, h: number) {
+  const key = shelfGlowKey(w);
+  if (scene.textures.exists(key)) return;
+  canvasTexture(scene, key, w, h, (c) => {
+    const n = nicheBounds(w, h);
+    const cx = Math.floor(w / 2);
+    // The lit back wall, with a cone of light spreading down from the fixture
+    rect(c, '#efc698', n.backLeft, n.backTop, n.backWidth, n.floor - n.backTop);
+    const coneH = n.floor - n.backTop;
+    for (let i = 0; i < coneH; i++) {
+      const outer = Math.min(Math.floor(n.backWidth / 2), 6 + Math.floor(i * 0.65));
+      const inner = Math.min(outer - 3, 3 + Math.floor(i * 0.4));
+      rect(c, '#f8dcb0', cx - outer, n.backTop + i, outer * 2, 1);
+      rect(c, '#fdeac6', cx - inner, n.backTop + i, inner * 2, 1);
+    }
+    // The fixture itself, and its light on the ceiling
+    rect(c, '#ffe9a0', cx - 9, n.top + 2, 18, 2);
+    rect(c, '#fff8d6', cx - 7, n.top, 14, 2);
+  });
+}
+
+// Tall hand-lettered capitals for the shop's sign.
+const SIGN_GLYPHS: Record<string, string[]> = {
+  E: ['#######', '#######', '##.....', '##.....', '######.', '######.', '##.....', '##.....', '##.....', '#######', '#######'],
+  X: ['##...##', '##...##', '.##.##.', '.##.##.', '..###..', '..###..', '..###..', '.##.##.', '.##.##.', '##...##', '##...##'],
+  T: ['#######', '#######', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..', '..###..'],
+  R: ['######.', '#######', '##...##', '##...##', '##..###', '######.', '#####..', '##.###.', '##..##.', '##..###', '##...##'],
+  A: ['..###..', '.#####.', '.##.##.', '##...##', '##...##', '##...##', '#######', '#######', '##...##', '##...##', '##...##'],
+  L: ['##....', '##....', '##....', '##....', '##....', '##....', '##....', '##....', '##....', '######', '######'],
+  I: ['##.', '##.', '...', '##.', '##.', '##.', '##.', '##.', '##.', '##.', '##.'],
+  F: ['######', '######', '##....', '##....', '#####.', '#####.', '##....', '##....', '##....', '##....', '##....'],
+  M: ['##.....##', '###...###', '####.####', '##.###.##', '##..#..##', '##.....##', '##.....##', '##.....##', '##.....##', '##.....##', '##.....##'],
+};
+
+const SIGN_WORDS: { text: string; colour: string; shade: string }[] = [
+  { text: 'EXTRA', colour: '#e4683a', shade: '#a84622' },
+  { text: 'LIFE', colour: '#35aa9f', shade: '#1b7570' },
+  { text: 'MART', colour: '#1f81a0', shade: '#125a74' },
+];
+const SIGN_WORD_GAP = 5;
+
+function drawSign(c: Ctx, centre: number, top: number, maxW: number) {
+  // A cream oval in a teal ring, with squared-off ends
+  const h = 29;
+  const halfW = Math.floor(maxW / 2);
+  // Peeling the shape back a pixel at a time gives an even ring all the way round.
+  const inside = (px: number, py: number) => {
+    const dx = Math.abs(px + 0.5) / halfW;
+    const dy = Math.abs(py + 0.5 - h / 2) / (h / 2);
+    return Math.pow(dx, 2.6) + Math.pow(dy, 2.6) <= 1;
+  };
+  let mask = new Set<string>();
+  for (let py = 0; py < h; py++) {
+    for (let px = -halfW; px < halfW; px++) if (inside(px, py)) mask.add(`${px},${py}`);
+  }
+  [INK, FRAME, FRAME_LIGHT, CREAM].forEach((colour) => {
+    const next = new Set<string>();
+    for (const key of mask) {
+      const [px, py] = key.split(',').map(Number);
+      rect(c, colour, centre + px, top + py);
+      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].every(([ox, oy]) => mask.has(`${px + ox},${py + oy}`))) next.add(key);
+    }
+    if (colour !== CREAM) mask = next;
+  });
+  // Faint planks across the sign
+  rect(c, '#e7d4ad', centre - halfW + 9, top + 24, maxW - 18, 1);
+
+  // The name, with each letter bouncing a little like hand painting
+  const widths = SIGN_WORDS.map(({ text }) => [...text].reduce((sum, ch) => sum + SIGN_GLYPHS[ch][0].length + 1, -1));
+  let x = centre - Math.floor((widths.reduce((a, b) => a + b, 0) + SIGN_WORD_GAP * (SIGN_WORDS.length - 1)) / 2);
+  let letter = 0;
+  SIGN_WORDS.forEach(({ text, colour, shade }) => {
+    for (const ch of text) {
+      const rows = SIGN_GLYPHS[ch];
+      const y = top + 4 + (letter % 2);
+      rows.forEach((row, ry) => [...row].forEach((px, rx) => {
+        if (px !== '#') return;
+        rect(c, shade, x + rx, y + ry + 1);
+      }));
+      rows.forEach((row, ry) => [...row].forEach((px, rx) => {
+        if (px === '#') rect(c, colour, x + rx, y + ry);
+      }));
+      x += rows[0].length + 1;
+      letter++;
+    }
+    x += SIGN_WORD_GAP - 1;
+  });
+}
+
 function drawShop(scene: Phaser.Scene) {
   const { W, H, windowX: x, windowY: y, windowW: w, windowH: h } = L;
   canvasTexture(scene, 'shop', W, H, (c) => {
-    const rng = seeded(7);
-    // Painted seafoam boards
-    rect(c, '#8ad1c2', 0, 0, W, L.counterTop + 2);
-    for (let by = 0; by < L.counterTop; by += 7) {
-      rect(c, '#6fbcae', 0, by + 6, W, 1);
-      rect(c, '#a3e0d3', 0, by, W, 1);
-    }
-    speckle(c, rng, 0, 0, W, L.counterTop, ['#7cc6b8', '#9bdccf'], 0.05);
+    // Tiled wall, with cream pillars either side of the window
+    drawTiles(c, 0, 0, W, L.counterTop + 2);
+    [8, W - 21].forEach((px) => {
+      rect(c, FRAME_DARK, px - 1, 0, 15, L.counterTop);
+      rect(c, CREAM, px, 0, 13, L.counterTop);
+      rect(c, CREAM_LIGHT, px + 1, 0, 3, L.counterTop);
+      rect(c, CREAM_SHADE, px + 9, 0, 4, L.counterTop);
+    });
 
-    // Rope down one side; a life ring on the other
-    for (let ry = L.hudH + 3; ry < L.counterTop - 4; ry += 3) {
-      rect(c, '#d9b98a', 15, ry, 3, 2);
-      rect(c, '#a98a5f', 16, ry + 2, 2, 1);
-    }
-    const ringX = W - 18;
-    const ringY = y + h - 26;
-    disc(c, '#fbf1d8', ringX, ringY, 8);
-    disc(c, '#8ad1c2', ringX, ringY, 4);
-    [[-8, -2], [4, -2], [-2, -8], [-2, 4]].forEach(([rx, ry]) => rect(c, '#e8604f', ringX + rx, ringY + ry, 4, 4));
-
-    // The shop's name board above the window
-    rect(c, '#5d4630', x - 3, L.signY, w + 6, 21);
-    rect(c, '#a97d4f', x - 2, L.signY + 1, w + 4, 19);
-    rect(c, '#c1955f', x - 2, L.signY + 1, w + 4, 1);
-    for (let i = 0; i < 40; i++) rect(c, '#8a6240', x + Math.floor(rng() * (w - 8)), L.signY + 3 + Math.floor(rng() * 16), 3 + Math.floor(rng() * 8), 1);
-
-    // White window frame
-    rect(c, '#b7c8c2', x - 5, y - 5, w + 10, h + 8);
-    rect(c, '#fbf6e8', x - 4, y - 4, w + 8, h + 6);
-    rect(c, '#d9d3bf', x - 1, y - 1, w + 2, h + 2);
+    // Teal window frame
+    rect(c, FRAME_DARK, x - 6, y - 2, w + 12, h + 2);
+    rect(c, FRAME, x - 5, y - 1, w + 10, h + 1);
+    rect(c, FRAME_LIGHT, x - 3, y - 1, 1, h + 1);
+    rect(c, FRAME_LIGHT, x + w + 2, y - 1, 1, h + 1);
     c.clearRect(x, y, w, h);
 
-    // Striped awning hanging across the top of the window
-    for (let ax = 0; ax < w; ax += 16) {
-      const colour = (ax / 16) % 2 === 0 ? '#ef6f5e' : '#fff6e3';
-      rect(c, colour, x + ax, y, Math.min(16, w - ax), 6);
-      if (ax + 16 <= w) disc(c, colour, x + ax + 8, y + 6, 2);
-      rect(c, (ax / 16) % 2 === 0 ? '#c9503f' : '#e2d6bc', x + ax, y, Math.min(16, w - ax), 1);
-    }
+    // Cream beam running behind the sign
+    rect(c, FRAME_DARK, 0, y - 10, W, 1);
+    rect(c, CREAM_LIGHT, 0, y - 9, W, 2);
+    rect(c, CREAM, 0, y - 7, W, 4);
+    rect(c, CREAM_SHADE, 0, y - 3, W, 1);
+    rect(c, FRAME_LIGHT, 0, y - 2, W, 1);
+    rect(c, FRAME, 0, y - 1, W, 1);
 
-    // Driftwood counter
+    // Teal sill along the bottom of the window
+    rect(c, FRAME_DARK, x - 6, L.counterTop - 4, w + 12, 1);
+    rect(c, FRAME_LIGHT, x - 5, L.counterTop - 3, w + 10, 1);
+    rect(c, FRAME, x - 5, L.counterTop - 2, w + 10, 2);
+
+    // The straps the calendar hangs from
+    [7, 27].forEach((sx) => {
+      rect(c, '#b49a74', sx, 0, 2, wallTop() + 2);
+      rect(c, '#e4d2ac', sx, 0, 1, wallTop() + 2);
+    });
+
+    drawSign(c, Math.floor(W / 2), L.signY - 2, w + 2);
+
+    // Smooth sand-coloured counter
     const top = L.counterTop;
     const bottom = L.counterBottom;
-    rect(c, '#e8c896', 0, top, W, 4);
-    rect(c, '#f6dfb6', 0, top, W, 1);
-    rect(c, '#d4ad78', 0, top + 4, W, bottom - top - 10);
-    for (let i = 0; i < 90; i++) {
-      rect(c, rng() < 0.5 ? '#c49c68' : '#e0bd8b', Math.floor(rng() * W), top + 4 + Math.floor(rng() * (bottom - top - 10)), 1 + Math.floor(rng() * 8), 1);
-    }
-    rect(c, '#9c7446', 0, bottom - 6, W, 2);
-    rect(c, '#7a5a38', 0, bottom - 4, W, 5);
+    rect(c, '#f4e4c2', 0, top, W, 2);
+    rect(c, '#bfa070', 0, top + 2, W, 1);
+    rect(c, '#d9bd8e', 0, top + 3, W, bottom - top - 9);
+    rect(c, '#e0c698', 0, top + 3, W, 2);
+    rect(c, '#efdcb4', 0, bottom - 6, W, 2);
+    rect(c, '#a98a5c', 0, bottom - 4, W, 2);
+    rect(c, FRAME_DARK, 0, bottom - 2, W, 3);
 
-    // Shelving
-    rect(c, '#7a5a38', 0, L.shelfTop, W, L.rowH * 3);
+    // The shelf wall and its shelves
+    drawTiles(c, 0, L.shelfTop, W, L.rowH * 3);
     for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 4; col++) {
-        drawShelfCubby(c, rng, columnX(col), L.shelfTop + row * L.rowH, columnX(col + 1) - columnX(col), L.rowH);
+        const cellW = columnX(col + 1) - columnX(col);
+        drawShelfCubby(c, columnX(col), L.shelfTop + row * L.rowH, cellW, L.rowH);
       }
     }
 
@@ -143,33 +291,117 @@ function drawShop(scene: Phaser.Scene) {
     rect(c, COLOUR_STRIP, 0, L.stripTop, W, H - L.stripTop);
     rect(c, '#356482', 0, L.stripTop, W, 1);
   });
+  for (let col = 0; col < 4; col++) drawShelfGlow(scene, columnX(col + 1) - columnX(col), L.rowH);
 
-  // Painted shutter, closed until you open up
-  canvasTexture(scene, 'shutter', w, h, (c) => {
-    const rng = seeded(33);
-    rect(c, '#e9dcc0', 0, 0, w, h);
-    for (let sy = 0; sy < h; sy += 6) {
-      rect(c, (sy / 6) % 8 < 4 ? '#7fc4cf' : '#f4ead2', 0, sy, w, 5);
-      rect(c, '#b7a988', 0, sy + 5, w, 1);
-    }
-    speckle(c, rng, 0, 0, w, h, ['#c9b994', '#ffffff'], 0.02);
-    const signX = Math.floor(w / 2) - 32;
-    const signY = Math.floor(h / 2) - 11;
-    rect(c, '#7a5a38', signX, signY, 64, 22);
-    rect(c, '#a97d4f', signX + 1, signY + 1, 62, 20);
-    rect(c, '#7a5a38', signX + 4, signY - 8, 1, 8);
-    rect(c, '#7a5a38', signX + 59, signY - 8, 1, 8);
+  // Riveted metal bar along the top of the screen
+  canvasTexture(scene, 'hud_bar', W, L.hudH + 4, (c) => {
+    const rng = seeded(21);
+    const barH = L.hudH + 4;
+    rect(c, '#3b4954', 0, 0, W, barH);
+    rect(c, '#5a6a74', 0, barH - 2, W, 1);
+    rect(c, '#101820', 0, barH - 1, W, 1);
+    speckle(c, rng, 0, 0, W, barH - 2, ['#7a5f50', '#4c5b66'], 0.04);
+    rect(c, '#101820', 2, barH - 15, W - 4, 12);
+    rect(c, '#1f2d38', 3, barH - 14, W - 6, 11);
+    rect(c, '#2b3a46', 3, barH - 14, W - 6, 1);
+    [1, W - 2].forEach((rx) => {
+      rect(c, '#8e9ca4', rx, barH - 15, 1, 1);
+      rect(c, '#8e9ca4', rx, barH - 5, 1, 1);
+    });
   });
 
-  // Boards across shelf rows you haven't bought yet
-  canvasTexture(scene, 'boards', W, L.rowH, (c) => {
-    const rng = seeded(55);
-    rect(c, '#5d4630', 0, 0, W, L.rowH);
-    for (let by = 2; by < L.rowH - 3; by += 9) {
-      rect(c, '#9c7446', 0, by, W, 7);
-      rect(c, '#b98a58', 0, by, W, 1);
-      for (let i = 0; i < 40; i++) rect(c, '#8a6240', Math.floor(rng() * W), by + 2 + Math.floor(rng() * 4), 3 + Math.floor(rng() * 9), 1);
+  // A glass door standing open at each side of the window, behind the customers
+  canvasTexture(scene, 'window_doors', w, h, (c) => {
+    // Narrow pane on the left
+    rect(c, 'rgba(226, 244, 240, 0.4)', 0, 0, 8, h);
+    rect(c, 'rgba(255, 255, 255, 0.5)', 3, 0, 2, h);
+    rect(c, FRAME, 8, 0, 2, h);
+    rect(c, FRAME_DARK, 10, 0, 1, h);
+    // Open door on the right, taller at its near edge
+    const doorW = 34;
+    const left = w - doorW;
+    for (let i = 0; i < doorW; i++) {
+      const doorTop = Math.max(0, 22 - Math.floor(i * 0.55));
+      const edge = i < 3 || i >= doorW - 3;
+      rect(c, edge ? FRAME : 'rgba(205, 238, 236, 0.32)', left + i, doorTop + (edge ? 0 : 3), 1, h);
+      if (!edge) rect(c, FRAME, left + i, doorTop, 1, 3);
+      if (!edge && (i + 4) % 12 < 3) rect(c, 'rgba(255, 255, 255, 0.35)', left + i, doorTop + 6 + i % 12, 1, 16);
     }
+    rect(c, FRAME_DARK, left - 1, 22, 1, h);
+  });
+
+  // Roller shutter, closed until you open up
+  canvasTexture(scene, 'shutter', w, h, (c) => {
+    const rng = seeded(33);
+    drawSlats(c, rng, 0, 0, w, h);
+    const signX = Math.floor(w / 2) - 32;
+    const signY = Math.floor(h / 2) - 11;
+    rect(c, '#2d3036', signX + 6, signY - 10, 1, 10);
+    rect(c, '#2d3036', signX + 57, signY - 10, 1, 10);
+    rounded(c, INK, signX, signY, 64, 22);
+    rounded(c, FRAME, signX + 1, signY + 1, 62, 20);
+    rounded(c, CREAM_LIGHT, signX + 3, signY + 3, 58, 16);
+  });
+
+  // A locked row: wall tiles with room for the MORE SHELVES button
+  canvasTexture(scene, 'more_shelves_row', W, L.rowH, (c) => {
+    const rng = seeded(55);
+    drawTiles(c, 0, 0, W, L.rowH);
+    const barH = Math.min(26, L.rowH - 12);
+    const barY = Math.floor((L.rowH - barH) / 2);
+    rect(c, '#5c3418', 5, barY, W - 10, barH);
+    rect(c, '#ee9a62', 6, barY + 1, W - 12, barH - 2);
+    rect(c, '#f9bb88', 6, barY + 1, W - 12, 1);
+    rect(c, '#c97440', 6, barY + barH - 2, W - 12, 1);
+    for (let i = 0; i < 26; i++) {
+      rect(c, rng() < 0.5 ? '#e08a52' : '#f4a874', 8 + Math.floor(rng() * (W - 26)), barY + 3 + Math.floor(rng() * (barH - 6)), 2 + Math.floor(rng() * 8), 1);
+    }
+  });
+
+  // The row after that: a padlocked shutter, stamped LOCKED
+  canvasTexture(scene, 'locked_row', W, L.rowH, (c) => {
+    const rng = seeded(61);
+    const rowH = L.rowH;
+    drawTiles(c, 0, 0, W, rowH);
+    rect(c, CREAM_SHADE, 3, 3, W - 6, rowH - 6);
+    rect(c, CREAM_LIGHT, 4, 3, W - 8, 2);
+    rect(c, INK, 6, 6, W - 12, rowH - 12);
+    drawSlats(c, rng, 7, 7, W - 14, rowH - 14);
+
+    // The stamp: big letters leaning uphill, with a rule above and below
+    const stamp = '#16303e';
+    const text = 'LOCKED';
+    const scale = 2;
+    const stampW = text.length * CHAR_W * scale - scale;
+    const stampX = Math.floor((W - stampW) / 2);
+    const stampY = Math.floor(rowH / 2) - 7;
+    const lean = (px: number) => 3 - Math.floor((px - stampX) / 14);
+    [...text].forEach((ch, i) => {
+      GLYPHS[ch].split('|').forEach((row, ry) => [...row].forEach((on, rx) => {
+        if (on !== '#') return;
+        const px = stampX + i * CHAR_W * scale + rx * scale;
+        rect(c, stamp, px, stampY + ry * scale + lean(px), scale + 1, scale);
+      }));
+    });
+    for (let px = stampX - 4; px < stampX + stampW + 4; px++) {
+      rect(c, stamp, px, stampY - 4 + lean(px), 1, 2);
+      rect(c, stamp, px, stampY + 15 + lean(px), 1, 2);
+    }
+    // Worn patches in the stamp
+    speckle(c, rng, stampX - 2, stampY - 3, stampW + 4, 20, [SHUTTER, SHUTTER_LIGHT], 0.025);
+
+    // Padlock over the bottom of the shutter
+    const lockX = Math.floor(W / 2) - 5;
+    const lockY = rowH - 15;
+    rect(c, INK, lockX + 2, lockY - 1, 7, 6);
+    rect(c, '#a6a8a4', lockX + 3, lockY, 5, 5);
+    rect(c, INK, lockX + 4, lockY + 1, 3, 4);
+    rect(c, INK, lockX, lockY + 4, 11, 10);
+    rect(c, '#c6ab74', lockX + 1, lockY + 5, 9, 8);
+    rect(c, '#e2cc98', lockX + 1, lockY + 5, 9, 1);
+    rect(c, '#94794a', lockX + 1, lockY + 12, 9, 1);
+    rect(c, INK, lockX + 5, lockY + 7, 1, 3);
+    rect(c, INK, lockX + 4, lockY + 7, 3, 1);
   });
 
   drawTill(scene);
@@ -188,28 +420,13 @@ function rounded(c: Ctx, color: string, x: number, y: number, w: number, h: numb
   rect(c, color, x, y + 1, w, h - 2);
 }
 
-const TINY_GLYPHS: Record<string, string> = {
-  $: '.##|#..|.#.|..#|##.',
-  '.': '.|.|.|.|#',
-  0: '###|#.#|#.#|#.#|###',
-  1: '.#.|##.|.#.|.#.|###',
-  2: '##.|..#|.#.|#..|###',
-  3: '##.|..#|.#.|..#|##.',
-  4: '#.#|#.#|###|..#|..#',
-  5: '###|#..|##.|..#|##.',
-  6: '.##|#..|###|#.#|###',
-  7: '###|..#|.#.|.#.|.#.',
-  8: '###|#.#|###|#.#|###',
-  9: '###|#.#|###|..#|##.',
-};
-
-/** Three-by-five digits for the printing on the machines. Too small to use for game text. */
+/** Three-by-five digits for the printing on the machines. */
 function tinyText(c: Ctx, color: string, x: number, y: number, text: string) {
   let cx = x;
   for (const ch of text) {
     const rows = TINY_GLYPHS[ch].split('|');
     rows.forEach((row, ry) => [...row].forEach((on, rx) => { if (on === '#') rect(c, color, cx + rx, y + ry, 1, 1); }));
-    cx += ch === '.' ? 2 : 4;
+    cx += rows[0].length + 1;
   }
 }
 
@@ -454,120 +671,247 @@ function drawTerminal(scene: Phaser.Scene) {
 
 // ---- Products -------------------------------------------------------------
 
+/** Size of a snack sprite. Everything stands on the same bottom row, so they line up on a shelf. */
+export const ITEM_W = 16;
+export const ITEM_H = 20;
+
+/** A straight-sided shape, narrowing or widening by row. Gives cups, tubs and bags their outline. */
+function taper(c: Ctx, color: string, cx: number, top: number, bottom: number, topHalf: number, bottomHalf: number) {
+  for (let y = top; y <= bottom; y++) {
+    const half = Math.round(topHalf + ((bottomHalf - topHalf) * (y - top)) / Math.max(1, bottom - top));
+    rect(c, color, cx - half, y, half * 2, 1);
+  }
+}
+
 const SNACK_ART: Record<string, (c: Ctx) => void> = {
-  chips: (c) => {
-    rect(c, '#b02f2a', 3, 2, 10, 12);
-    rect(c, '#d9423c', 3, 2, 7, 12);
-    rect(c, '#f0b04a', 2, 1, 12, 2);
-    rect(c, '#f0b04a', 2, 13, 12, 2);
-    rect(c, '#f7d774', 5, 5, 6, 6);
-    rect(c, '#d9a23e', 7, 7, 3, 3);
-    rect(c, '#f09a90', 4, 3, 1, 9);
-  },
+  // Blue can with a silver swoosh
   soda: (c) => {
-    rect(c, '#2a62a8', 4, 2, 8, 12);
-    rect(c, '#3c86cf', 4, 2, 5, 12);
-    rect(c, '#c6ced4', 5, 1, 6, 1);
-    rect(c, '#8c969e', 4, 2, 8, 1);
-    rect(c, '#8c969e', 5, 14, 6, 1);
-    rect(c, '#ece3cc', 4, 6, 8, 2);
-    rect(c, '#ece3cc', 6, 8, 6, 2);
-    rect(c, '#a8d4ef', 5, 3, 1, 10);
-  },
-  choco: (c) => {
-    rect(c, '#8a2f59', 1, 4, 10, 8);
-    rect(c, '#a73c70', 1, 4, 10, 3);
-    rect(c, '#f0d27a', 3, 6, 6, 4);
-    rect(c, '#54301c', 11, 4, 4, 8);
-    rect(c, '#744528', 11, 4, 2, 2);
-    rect(c, '#744528', 13, 6, 2, 2);
-    rect(c, '#744528', 11, 8, 2, 2);
-    rect(c, '#744528', 13, 10, 2, 2);
-  },
-  noodle: (c) => {
-    rect(c, '#e8e0cb', 3, 4, 10, 4);
-    rect(c, '#e8e0cb', 4, 8, 8, 6);
-    rect(c, '#b8ad96', 10, 4, 3, 4);
-    rect(c, '#b8ad96', 10, 8, 2, 6);
-    rect(c, '#d9423c', 3, 6, 10, 3);
-    rect(c, '#f0b04a', 2, 2, 12, 2);
-    rect(c, '#c98a2e', 10, 2, 4, 2);
-    rect(c, '#54201e', 6, 11, 4, 1);
-  },
-  jerky: (c) => {
-    for (let i = 0; i < 11; i++) {
-      rect(c, '#5a2d1a', 2 + i, 12 - i, 3, 3);
-      rect(c, '#94512a', 3 + i, 12 - i, 1, 2);
+    rect(c, '#e8eef2', 5, 1, 6, 1);
+    rect(c, '#aeb9c2', 4, 2, 8, 1);
+    rect(c, '#8c98a4', 7, 1, 2, 1);
+    rect(c, '#2a6fc0', 3, 3, 10, 14);
+    rect(c, '#4f9be0', 4, 3, 2, 14);
+    rect(c, '#1c4f96', 11, 3, 2, 14);
+    for (let i = 0; i < 10; i++) {
+      const y = 12 - Math.floor(i * 0.6);
+      rect(c, '#e4e8ea', 3 + i, y, 1, 2);
+      rect(c, '#9db4c6', 3 + i, y + 2, 1, 1);
     }
-    rect(c, '#d9c28a', 2, 11, 4, 4);
-    rect(c, '#b89f68', 4, 13, 2, 2);
+    rect(c, '#bfe2f8', 4, 4, 1, 11);
+    rect(c, '#c8d2da', 3, 3, 10, 1);
+    rect(c, '#aeb9c2', 4, 17, 8, 1);
+    rect(c, '#e8eef2', 5, 18, 6, 1);
   },
+  // Puffy red bag with crimped ends, a teal swoosh and a pile of chips
+  chips: (c) => {
+    rect(c, '#d4d0c0', 2, 1, 12, 1);
+    for (let x = 2; x < 14; x += 2) rect(c, '#8f8c7c', x, 2, 1, 1);
+    rect(c, '#df4522', 1, 3, 14, 14);
+    rect(c, '#df4522', 2, 2, 12, 1);
+    rect(c, '#f47a52', 2, 4, 2, 11);
+    rect(c, '#ffc0a4', 2, 5, 1, 6);
+    rect(c, '#ab2c12', 13, 4, 2, 12);
+    rect(c, '#2fb0a6', 4, 4, 8, 3);
+    rect(c, '#2fb0a6', 3, 5, 1, 3);
+    rect(c, '#8fe0d4', 5, 4, 5, 1);
+    rect(c, '#1d807c', 5, 7, 8, 1);
+    disc(c, '#f7bd42', 6, 12, 2);
+    disc(c, '#f7bd42', 10, 12, 2);
+    rect(c, '#ffe08a', 5, 11, 2, 1);
+    rect(c, '#ffe08a', 9, 11, 2, 1);
+    rect(c, '#c98420', 7, 14, 2, 1);
+    rect(c, '#c98420', 11, 13, 1, 2);
+    rect(c, '#df4522', 2, 17, 12, 1);
+    rect(c, '#d4d0c0', 2, 18, 12, 1);
+    for (let x = 3; x < 14; x += 2) rect(c, '#8f8c7c', x, 18, 1, 1);
+  },
+  // Two purple-wrapped bars stacked flat, with silver foil ends and gold lettering
+  choco: (c) => {
+    const bar = (top: number, shift: number, body: string, light: string, dark: string, gold: string) => {
+      for (let y = 0; y < 7; y++) {
+        const x = 1 + shift + (y < 2 ? 1 : 0);
+        rect(c, y < 2 ? light : y > 4 ? dark : body, x, top + y, 14 - shift - (y < 2 ? 1 : 0), 1);
+      }
+      rect(c, '#e2e4ea', 1 + shift, top + 2, 2, 5);
+      rect(c, '#a4a8b4', 2 + shift, top + 2, 1, 5);
+      rect(c, '#e2e4ea', 13, top + 2, 2, 5);
+      rect(c, '#a4a8b4', 13, top + 2, 1, 5);
+      rect(c, gold, 5 + shift, top + 3, 6 - shift, 1);
+      rect(c, gold, 5 + shift, top + 5, 2, 1);
+      rect(c, gold, 8 + shift, top + 5, 3 - shift, 1);
+    };
+    bar(6, 1, '#55258f', '#7747b4', '#3c1868', '#c49a38');
+    bar(12, 0, '#7030bc', '#9a62dc', '#4d1f8c', '#f6d056');
+  },
+  // White cup with a red pattern and a peeling foil lid
+  noodle: (c) => {
+    rect(c, '#e8c048', 1, 4, 14, 1);
+    rect(c, '#fbf8ee', 1, 5, 14, 2);
+    rect(c, '#c8c2ae', 1, 6, 14, 1);
+    rect(c, '#f6df8a', 10, 3, 4, 1);
+    rect(c, '#e8c048', 12, 2, 3, 1);
+    taper(c, '#f6f1e4', 8, 7, 18, 7, 5);
+    taper(c, '#d6cfbc', 12, 7, 18, 3, 1);
+    rect(c, '#d83a2e', 2, 8, 12, 1);
+    rect(c, '#d83a2e', 3, 11, 10, 3);
+    [4, 7, 10].forEach((x) => rect(c, '#fbf8ee', x, 12, 2, 1));
+    rect(c, '#a8281e', 11, 11, 2, 3);
+    rect(c, '#d83a2e', 4, 16, 8, 1);
+    rect(c, '#fffdf4', 3, 8, 1, 9);
+  },
+  // Three smoky sticks in a kraft sleeve with a red band
+  jerky: (c) => {
+    [[3, '#7a3f1e', '#9c5a30'], [7, '#6a3418', '#8e4f28'], [11, '#7a3f1e', '#9c5a30']].forEach(([x, base, light], i) => {
+      const top = [2, 1, 3][i];
+      rect(c, base as string, x as number, top, 3, 11);
+      rect(c, light as string, x as number, top, 1, 11);
+      rect(c, '#4c2410', (x as number) + 2, top, 1, 11);
+      rect(c, '#b4784a', (x as number) + 1, top + 2, 1, 1);
+    });
+    rect(c, '#d9b27a', 2, 9, 12, 9);
+    rect(c, '#f0d3a0', 2, 9, 12, 1);
+    rect(c, '#a98450', 12, 10, 2, 8);
+    rect(c, '#d03c2c', 2, 11, 12, 4);
+    rect(c, '#f0705c', 2, 11, 12, 1);
+    rect(c, '#8e2418', 12, 12, 2, 3);
+    rect(c, '#fbf1d8', 4, 13, 7, 1);
+    rect(c, '#b08a58', 3, 17, 10, 1);
+  },
+  // Three-colour pop on a stick, with frost on its shoulder
   icepop: (c) => {
-    rect(c, '#e85d75', 4, 1, 8, 4);
-    rect(c, '#fbf1d8', 4, 5, 8, 3);
-    rect(c, '#4aa8e0', 4, 8, 8, 3);
-    rect(c, '#f6a0ae', 5, 1, 2, 4);
-    rect(c, '#2f86bd', 10, 8, 2, 3);
-    rect(c, '#d9b98a', 7, 11, 2, 4);
+    rect(c, '#e8c896', 7, 14, 3, 5);
+    rect(c, '#b89464', 9, 14, 1, 5);
+    rect(c, '#e8506a', 4, 2, 9, 4);
+    rect(c, '#e8506a', 5, 1, 7, 1);
+    rect(c, '#ff94a4', 5, 2, 2, 4);
+    rect(c, '#ffd6dc', 5, 2, 1, 2);
+    rect(c, '#fbf6ee', 4, 6, 9, 4);
+    rect(c, '#d4dae0', 11, 6, 2, 4);
+    rect(c, '#3c96e4', 4, 10, 9, 4);
+    rect(c, '#2a6cb4', 4, 13, 9, 1);
+    rect(c, '#88c8f4', 5, 10, 2, 3);
+    rect(c, '#b83850', 11, 2, 2, 4);
+    rect(c, '#2a6cb4', 11, 10, 2, 3);
   },
+  // Striped tub overflowing with popcorn
   popcorn: (c) => {
-    rect(c, '#fbf1d8', 4, 7, 8, 8);
-    [4, 8].forEach((x) => rect(c, '#d9423c', x, 7, 2, 8));
-    rect(c, '#fff3c4', 3, 3, 10, 4);
-    rect(c, '#fff3c4', 5, 1, 6, 2);
-    [[4, 4], [8, 2], [11, 5], [6, 5]].forEach(([x, y]) => rect(c, '#f0b04a', x, y, 1, 1));
+    taper(c, '#fbf6ee', 8, 8, 18, 7, 5);
+    for (let i = 0; i < 3; i++) {
+      for (let y = 8; y <= 18; y++) {
+        const inset = Math.round(((y - 8) / 10) * 2);
+        rect(c, '#dc3a2e', 3 + i * 4 + inset - i, y, 2, 1);
+      }
+    }
+    taper(c, '#c8c0ac', 13, 8, 18, 2, 0);
+    rect(c, '#b42a20', 1, 8, 14, 1);
+    [[4, 6, 3], [8, 5, 4], [12, 6, 3], [6, 3, 3], [10, 3, 3], [8, 1, 2]].forEach(([x, y, r]) => {
+      disc(c, '#f8e8a8', x, y, r > 3 ? 3 : r - 1);
+      rect(c, '#fffbe4', x - 1, y - 1, 2, 1);
+      rect(c, '#e0b84e', x + 1, y + 1, 1, 1);
+    });
+    disc(c, '#fff4c0', 8, 5, 2);
+    rect(c, '#e0b84e', 5, 7, 1, 1);
+    rect(c, '#e0b84e', 11, 7, 1, 1);
   },
+  // A cut coconut with a straw and a little paper umbrella
   coconut: (c) => {
-    rect(c, '#6b4a2e', 3, 5, 10, 9);
-    rect(c, '#8a6240', 3, 5, 5, 4);
-    rect(c, '#fbf6e8', 4, 3, 8, 3);
-    rect(c, '#bfe6e0', 5, 3, 6, 2);
-    rect(c, '#ef6f5e', 10, 0, 1, 5);
-    rect(c, '#ef6f5e', 11, 0, 2, 1);
+    rect(c, '#f07060', 12, 1, 1, 7);
+    rect(c, '#fbf1d8', 12, 3, 1, 1);
+    rect(c, '#fbf1d8', 12, 6, 1, 1);
+    rect(c, '#b08a58', 5, 4, 1, 4);
+    taper(c, '#e8506a', 5, 1, 3, 1, 5);
+    rect(c, '#ffc65c', 3, 3, 2, 1);
+    rect(c, '#ffc65c', 6, 3, 2, 1);
+    rect(c, '#ff94a4', 4, 1, 2, 1);
+    disc(c, '#6a4226', 8, 12, 6);
+    rect(c, '#8c5c36', 3, 10, 4, 5);
+    rect(c, '#a97648', 3, 11, 2, 2);
+    rect(c, '#46280f', 11, 11, 3, 5);
+    [[5, 15], [8, 16], [10, 13], [7, 12]].forEach(([x, y]) => rect(c, '#46280f', x, y, 2, 1));
+    rect(c, '#fbf8ee', 3, 7, 10, 2);
+    rect(c, '#a8d8d0', 5, 7, 6, 1);
   },
+  // Golden pie in a foil tin, with vents in its crust
   pie: (c) => {
-    rect(c, '#7a5228', 2, 11, 12, 3);
-    rect(c, '#55381b', 3, 13, 10, 1);
-    rect(c, '#d9a55c', 2, 7, 12, 5);
-    rect(c, '#d9a55c', 4, 5, 8, 2);
-    rect(c, '#f0c988', 4, 5, 5, 2);
-    rect(c, '#f0c988', 3, 7, 5, 2);
-    rect(c, '#8a5a2c', 6, 7, 1, 2);
-    rect(c, '#8a5a2c', 9, 6, 1, 2);
-    rect(c, '#8a5a2c', 11, 8, 1, 2);
+    rect(c, '#d9a452', 2, 8, 12, 1);
+    rect(c, '#e6b868', 1, 9, 14, 3);
+    rect(c, '#f6d48c', 2, 8, 8, 1);
+    rect(c, '#fbe6ae', 3, 9, 4, 1);
+    rect(c, '#c08438', 12, 9, 3, 3);
+    for (let x = 1; x < 15; x += 2) rect(c, '#c88e42', x, 12, 1, 1);
+    rect(c, '#d9a452', 1, 12, 14, 1);
+    for (let x = 2; x < 15; x += 3) rect(c, '#a86e2c', x, 12, 1, 1);
+    rect(c, '#8a5a24', 6, 9, 1, 2);
+    rect(c, '#8a5a24', 8, 9, 1, 2);
+    rect(c, '#8a5a24', 10, 9, 1, 2);
+    rect(c, '#d4dae0', 1, 13, 14, 2);
+    rect(c, '#f0f4f6', 1, 13, 14, 1);
+    taper(c, '#b4bcc4', 8, 15, 18, 7, 5);
+    rect(c, '#8a929c', 11, 15, 3, 4);
+    rect(c, '#e0e4e8', 4, 16, 3, 1);
   },
+  // Folded shell with fish, slaw and tomato spilling out along its top
   taco: (c) => {
-    rect(c, '#5cbf5e', 3, 5, 10, 2);
-    rect(c, '#ef6f5e', 5, 4, 2, 2);
-    rect(c, '#fbf1d8', 9, 4, 3, 2);
-    rect(c, '#f0c04a', 2, 7, 12, 5);
-    rect(c, '#f0c04a', 4, 12, 8, 2);
-    rect(c, '#c9922e', 2, 11, 12, 1);
-    rect(c, '#f7dc8a', 3, 7, 5, 1);
+    disc(c, '#62b844', 8, 16, 7);
+    rect(c, '#92dc62', 3, 11, 3, 1);
+    rect(c, '#92dc62', 10, 10, 3, 1);
+    rect(c, '#f4f0e0', 6, 9, 4, 2);
+    rect(c, '#f6b070', 7, 11, 3, 1);
+    rect(c, '#e8483c', 3, 12, 2, 1);
+    rect(c, '#e8483c', 11, 11, 2, 2);
+    disc(c, '#c28828', 8, 20, 8);
+    disc(c, '#f4c458', 8, 20, 7);
+    rect(c, '#fde694', 5, 13, 6, 1);
+    rect(c, '#fde694', 3, 15, 1, 2);
+    [[5, 16], [9, 15], [7, 17], [11, 17], [12, 15]].forEach(([x, y]) => rect(c, '#c28828', x, y, 1, 1));
+    c.clearRect(0, 19, ITEM_W, 1);
   },
+  // Tall glass of lemonade with ice, a straw and a lemon slice on the rim
   lemon: (c) => {
-    rect(c, '#e6f3f2', 4, 3, 8, 12);
-    rect(c, '#f7e25a', 5, 6, 6, 8);
-    rect(c, '#fff4a0', 5, 6, 2, 8);
-    rect(c, '#9fd0d8', 4, 14, 8, 1);
-    disc(c, '#f0c02e', 12, 4, 2);
-    rect(c, '#ef6f5e', 7, 0, 1, 6);
+    rect(c, '#e8506a', 8, 1, 1, 7);
+    rect(c, '#fbf1d8', 8, 3, 1, 1);
+    rect(c, '#fbf1d8', 8, 6, 1, 1);
+    rect(c, '#e8f6f6', 3, 5, 10, 14);
+    rect(c, '#c4e4e8', 12, 5, 1, 14);
+    rect(c, '#f8dc4c', 4, 8, 8, 10);
+    rect(c, '#fff09a', 4, 8, 8, 1);
+    rect(c, '#e0b82c', 10, 9, 2, 9);
+    rect(c, '#fff8c8', 5, 9, 1, 8);
+    rect(c, '#fff8d0', 7, 9, 3, 2);
+    rect(c, '#fff8d0', 6, 13, 3, 2);
+    rect(c, '#e8cc48', 9, 10, 1, 1);
+    rect(c, '#e8cc48', 8, 14, 1, 1);
+    rect(c, '#a8d4dc', 4, 18, 8, 1);
+    disc(c, '#f0c02e', 13, 5, 2);
+    disc(c, '#fff4a8', 13, 5, 1);
+    rect(c, '#f0c02e', 13, 5, 1, 1);
   },
+  // Rainbow snow piled high in a striped paper cup, with a spoon
   shave: (c) => {
-    disc(c, '#f28bb0', 8, 6, 4);
-    rect(c, '#7fd0ee', 8, 2, 4, 8);
-    rect(c, '#fff3c4', 6, 3, 2, 3);
-    rect(c, '#fbf1d8', 4, 9, 8, 2);
-    rect(c, '#e8604f', 5, 11, 6, 3);
-    rect(c, '#c9503f', 9, 11, 2, 3);
+    disc(c, '#fbfafc', 8, 6, 5);
+    rect(c, '#f07ca8', 3, 4, 4, 6);
+    rect(c, '#f07ca8', 4, 2, 3, 2);
+    rect(c, '#ffc8dc', 4, 3, 1, 4);
+    rect(c, '#66c8f0', 9, 3, 4, 7);
+    rect(c, '#66c8f0', 9, 2, 2, 1);
+    rect(c, '#b0e8fc', 10, 3, 1, 3);
+    rect(c, '#f8e070', 7, 1, 2, 9);
+    rect(c, '#fbf8d8', 7, 2, 1, 3);
+    rect(c, '#d8d4e0', 3, 9, 10, 1);
+    rect(c, '#c8ccd2', 13, 2, 1, 7);
+    rect(c, '#e8ecf0', 12, 1, 2, 2);
+    rect(c, '#fbf1d8', 2, 10, 12, 1);
+    taper(c, '#e8604f', 8, 11, 18, 6, 4);
+    for (let i = 0; i < 3; i++) rect(c, '#fbf1d8', 4 + i * 3, 11, 1, 8);
+    taper(c, '#b84236', 12, 11, 18, 2, 0);
   },
 };
 
 function drawProducts(scene: Phaser.Scene) {
   for (const [id, draw] of Object.entries(SNACK_ART)) {
-    canvasTexture(scene, `item_${id}`, 16, 16, (c) => {
+    canvasTexture(scene, `item_${id}`, ITEM_W, ITEM_H, (c) => {
       draw(c);
-      outline(c, 16, 16, '#2c2a33');
+      outline(c, ITEM_W, ITEM_H, '#2c2a33');
     });
   }
 }
@@ -739,14 +1083,16 @@ function drawCard(scene: Phaser.Scene) {
 }
 
 function drawTail(scene: Phaser.Scene) {
-  // Points at the speaker. Its right column overlaps the bubble's edge, joining the two outlines.
-  canvasTexture(scene, 'bubble_tail', 8, 8, (c) => {
-    for (let y = 0; y < 8; y++) {
-      const left = 7 - y;
-      rect(c, '#fbf1d8', left, y, 8 - left, 1);
-      rect(c, '#2c2a33', left, y, 1, 1);
+  // Hangs from the bubble's bottom edge towards the speaker. Its top rows overlap the frame, joining the two.
+  canvasTexture(scene, 'bubble_tail', 15, 11, (c) => {
+    for (let y = 0; y < 11; y++) {
+      const t = y / 10;
+      const left = Math.round(4 - t * 4);
+      const right = Math.round(14 - t * 13);
+      rect(c, INK, left, y, Math.max(1, right - left + 1), 1);
+      if (right - left >= 2) rect(c, FRAME, left + 1, y, right - left - 1, 1);
+      if (right - left >= 6) rect(c, BUBBLE_PAPER, left + 3, y, right - left - 5, 1);
     }
-    rect(c, '#2c2a33', 0, 7, 8, 1);
   });
 }
 
@@ -792,13 +1138,17 @@ function drawProps(scene: Phaser.Scene) {
 
 // ---- The TV, the calendar and the sign's stars ----------------------------
 
-export const TV_W = 30;
-export const TV_H = 28;
+export const TV_W = 35;
+export const TV_H = 40;
 export const TV_FRAMES = 4;
-export const CALENDAR_W = 30;
-export const CALENDAR_H = 28;
-const SCREEN_W = 22;
-const SCREEN_H = 14;
+export const TV_SCREEN_X = 4;
+export const TV_SCREEN_Y = 17;
+export const CALENDAR_W = 34;
+export const CALENDAR_H = 38;
+/** Where the first cell of the calendar's grid sits, and the size of each cell. */
+export const CALENDAR_GRID = { x: 4, y: 13, cell: 3, gap: 1, rows: 5 };
+const SCREEN_W = 27;
+const SCREEN_H = 18;
 
 function drawCloud(c: Ctx, x: number, y: number, colour: string) {
   rect(c, colour, x + 1, y + 2, 10, 3);
@@ -816,57 +1166,76 @@ function drawSun(c: Ctx, cx: number, cy: number, frame: number) {
 const SCREENS: Record<string, (c: Ctx, frame: number) => void> = {
   sunny(c, frame) {
     rect(c, '#62b6e8', 0, 0, SCREEN_W, SCREEN_H);
-    drawSun(c, 11, 6, frame);
-    rect(c, '#2f8fc4', 0, 12, SCREEN_W, 2);
-    for (let x = frame * 2; x < SCREEN_W; x += 8) rect(c, '#bfe6f7', x, 12, 3, 1);
+    rect(c, '#8ccdf0', 0, 11, SCREEN_W, 4);
+    drawSun(c, 11, 7, frame);
+    drawCloud(c, 14 + (frame % 2), 8, '#f4f8fa');
+    rect(c, '#2f8fc4', 0, 15, SCREEN_W, 3);
+    for (let x = frame * 2; x < SCREEN_W; x += 8) rect(c, '#bfe6f7', x, 16, 3, 1);
   },
   heatwave(c, frame) {
     rect(c, '#f08a3c', 0, 0, SCREEN_W, SCREEN_H);
-    rect(c, '#f6b04f', 0, 8, SCREEN_W, 6);
-    disc(c, '#fff0a8', 11, 5, 4);
+    rect(c, '#f6b04f', 0, 10, SCREEN_W, 8);
+    disc(c, '#fff0a8', 13, 6, 5);
     // Heat shimmer rising off the sand
     for (let row = 0; row < 3; row++) {
-      for (let x = (frame + row) % 4; x < SCREEN_W; x += 4) rect(c, '#ffd65c', x, 9 + row * 2, 2, 1);
+      for (let x = (frame + row) % 4; x < SCREEN_W; x += 4) rect(c, '#ffd65c', x, 12 + row * 2, 2, 1);
     }
   },
   rainy(c, frame) {
     rect(c, '#55677c', 0, 0, SCREEN_W, SCREEN_H);
-    drawCloud(c, 5, 1, '#c9d3dd');
-    for (let i = 0; i < 6; i++) {
+    drawCloud(c, 7, 2, '#c9d3dd');
+    for (let i = 0; i < 8; i++) {
       const x = 2 + i * 3 + (i % 2);
-      rect(c, '#9fd6f5', x, 7 + ((frame * 2 + i * 3) % 6), 1, 2);
+      rect(c, '#9fd6f5', x, 9 + ((frame * 2 + i * 3) % 7), 1, 2);
     }
   },
   cloudy(c, frame) {
     rect(c, '#9db4c6', 0, 0, SCREEN_W, SCREEN_H);
-    drawCloud(c, -2 + frame * 2, 1, '#eef3f6');
-    drawCloud(c, 12 - frame, 7, '#d3dee6');
+    drawCloud(c, -2 + frame * 2, 2, '#eef3f6');
+    drawCloud(c, 15 - frame, 10, '#d3dee6');
   },
 };
 
 function drawInfoBoard(scene: Phaser.Scene) {
   canvasTexture(scene, 'tv', TV_W, TV_H, (c) => {
-    // Rabbit ears
-    rect(c, '#2c2a33', 10, 0, 1, 2);
-    rect(c, '#2c2a33', 19, 0, 1, 2);
-    rect(c, '#2c2a33', 11, 2, 8, 1);
-    // Case
-    rect(c, '#2c2a33', 0, 3, TV_W, TV_H - 3);
-    rect(c, '#6d4f2b', 1, 4, TV_W - 2, TV_H - 5);
-    rect(c, '#8f6a3b', 1, 4, TV_W - 2, 1);
-    rect(c, '#14100e', 3, 4, SCREEN_W + 2, SCREEN_H + 2);
+    // Antenna
+    for (let i = 0; i < 5; i++) {
+      rect(c, '#2d3036', 15 - i * 2, 4 - i, 2, 1);
+      rect(c, '#2d3036', 18 + i * 2, 4 - i, 2, 1);
+    }
+    rect(c, '#2d3036', 14, 4, 7, 1);
+    // Rounded teal case
+    rounded(c, INK, 0, 5, TV_W, TV_H - 5);
+    rounded(c, FRAME, 1, 6, TV_W - 2, TV_H - 7);
+    rect(c, FRAME_LIGHT, 2, 6, TV_W - 4, 1);
+    rect(c, FRAME_DARK, 2, TV_H - 3, TV_W - 4, 1);
+    // TMRW header
+    rounded(c, FRAME_DARK, 3, 7, TV_W - 6, 9);
+    // Screen bezel
+    rounded(c, CREAM_LIGHT, TV_SCREEN_X - 1, TV_SCREEN_Y - 1, SCREEN_W + 2, SCREEN_H + 2);
+    rect(c, '#e8483c', TV_W - 7, TV_H - 4, 2, 1);
   });
   for (const [id, draw] of Object.entries(SCREENS)) {
     for (let frame = 0; frame < TV_FRAMES; frame++) {
-      canvasTexture(scene, `tv_${id}_${frame}`, SCREEN_W, SCREEN_H, (c) => draw(c, frame));
+      canvasTexture(scene, `tv_${id}_${frame}`, SCREEN_W, SCREEN_H, (c) => {
+        draw(c, frame);
+        [[0, 0], [SCREEN_W - 1, 0], [0, SCREEN_H - 1], [SCREEN_W - 1, SCREEN_H - 1]].forEach(([cx, cy]) => c.clearRect(cx, cy, 1, 1));
+      });
     }
   }
 
   canvasTexture(scene, 'calendar', CALENDAR_W, CALENDAR_H, (c) => {
-    rect(c, '#2c2a33', 0, 0, CALENDAR_W, CALENDAR_H);
-    rect(c, '#fbf1d8', 1, 1, CALENDAR_W - 2, CALENDAR_H - 2);
-    rect(c, '#c9503f', 1, 1, CALENDAR_W - 2, 9);
-    rect(c, '#e8604f', 1, 1, CALENDAR_W - 2, 1);
+    rounded(c, INK, 0, 0, CALENDAR_W, CALENDAR_H);
+    rounded(c, FRAME, 1, 1, CALENDAR_W - 2, CALENDAR_H - 2);
+    rect(c, FRAME_LIGHT, 2, 1, CALENDAR_W - 4, 1);
+    // Paper, with a curled corner
+    rect(c, CREAM_LIGHT, 2, 11, CALENDAR_W - 4, CALENDAR_H - 13);
+    rect(c, CREAM_SHADE, CALENDAR_W - 6, CALENDAR_H - 5, 3, 1);
+    rect(c, CREAM_SHADE, CALENDAR_W - 5, CALENDAR_H - 4, 2, 1);
+    rect(c, FRAME, CALENDAR_W - 4, CALENDAR_H - 3, 2, 1);
+    // Fine lines between the day cells, which are drawn live on top
+    const { x, y, cell, gap, rows } = CALENDAR_GRID;
+    rect(c, '#c9c2a4', x - 1, y - 1, 7 * (cell + gap) + 1, rows * (cell + gap) + 1);
   });
 
   const star = (key: string, fill: string, edge: string) =>
@@ -878,7 +1247,7 @@ function drawInfoBoard(scene: Phaser.Scene) {
       });
     });
   star('star_on', '#ffd65c', '#f0a93a');
-  star('star_off', '#7a5a38', '#6d4f2b');
+  star('star_off', '#b08a58', '#94734a');
 
   // The guiding arrow, pointing down. It's flipped to point up.
   canvasTexture(scene, 'guide_arrow', 15, 16, (c) => {
@@ -894,14 +1263,17 @@ function drawInfoBoard(scene: Phaser.Scene) {
 
   // A stretch of new shelf, for the unlock celebration
   canvasTexture(scene, 'new_shelf', 60, 26, (c) => {
-    rect(c, '#2c2a33', 0, 0, 60, 26);
-    rect(c, '#b98a58', 1, 1, 58, 24);
-    rect(c, '#dcb483', 1, 1, 58, 1);
+    rect(c, INK, 0, 0, 60, 26);
+    rect(c, FRAME, 1, 1, 58, 24);
+    rect(c, FRAME_LIGHT, 1, 1, 58, 1);
     for (let col = 0; col < 4; col++) {
-      rect(c, '#6f4d31', 2 + col * 14 + 1, 3, 12, 15);
-      rect(c, '#8a6240', 2 + col * 14 + 1, 6, 12, 12);
-      rect(c, '#e3bf8e', 2 + col * 14 + 1, 18, 12, 1);
-      rect(c, '#fbf1d8', 2 + col * 14 + 1, 20, 12, 3);
+      const cx = 3 + col * 14;
+      rect(c, '#efc698', cx, 3, 12, 15);
+      rect(c, '#94683f', cx, 3, 12, 1);
+      rect(c, '#fff8d6', cx + 3, 4, 6, 1);
+      rect(c, '#fdeac6', cx + 3, 5, 6, 13);
+      rect(c, CREAM_LIGHT, cx, 18, 12, 1);
+      rect(c, CREAM_LIGHT, cx, 20, 12, 3);
     }
   });
 }

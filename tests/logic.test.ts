@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
+import { calendarHeading } from '../src/logic/calendar';
+import { flickerSteps, nextFlickerSeconds } from '../src/logic/flicker';
+import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelName } from '../src/data/products';
+import { tinyTextWidth } from '../src/art/tinyGlyphs';
 import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
 import { clockLabel, lightingAt } from '../src/logic/clock';
@@ -566,13 +569,46 @@ describe('the line', () => {
 });
 
 describe('shelf labels', () => {
-  it('fit every full name, with room for the count on the second line', () => {
-    const charsPerShelf = 9; // 54 game pixels at 6 per character
+  // The narrowest shelf is 54 game pixels wide, leaving 48 inside its plate.
+  const narrowest = 48;
+
+  it('keep the full name when it fits', () => {
+    expect(shelfLabelName('CRUNCH CHIPS', 12, 54)).toBe('CRUNCH CHIPS');
+    expect(shelfLabelName('ICE POP', 12, narrowest)).toBe('ICE POP');
+  });
+
+  it('fall back to the first word on narrow shelves', () => {
+    expect(shelfLabelName('COCONUT WATER', 12, narrowest)).toBe('COCONUT');
+  });
+
+  it('always fit beside a two-digit count, even on the narrowest shelf', () => {
     for (const p of PRODUCTS) {
-      const [first, second] = shelfLabelLines(p.name);
-      expect(`${first} ${second}`.trim()).toBe(p.name);
-      expect(first.length).toBeLessThanOrEqual(charsPerShelf);
-      expect(second.length + 3).toBeLessThanOrEqual(charsPerShelf);
+      const shown = shelfLabelName(p.name, SHELF_CAPACITY, narrowest);
+      expect(tinyTextWidth(shown) + 2 + tinyTextWidth(String(SHELF_CAPACITY))).toBeLessThanOrEqual(narrowest);
+    }
+  });
+});
+
+describe('calendar heading', () => {
+  it('fits the 32 pixel header on every weekday, even in very late weeks', () => {
+    for (const day of [1, 2, 3, 4, 5, 6, 7, 64, 86, 700, 6999]) {
+      expect(tinyTextWidth(calendarHeading(day))).toBeLessThanOrEqual(32);
+    }
+  });
+});
+
+describe('shelf light flicker', () => {
+  it('stays occasional, at both ends of the random range', () => {
+    expect(nextFlickerSeconds(() => 0)).toBeGreaterThanOrEqual(8);
+    expect(nextFlickerSeconds(() => 0.999)).toBeLessThanOrEqual(25);
+  });
+
+  it('is brief, and always ends with the light back on', () => {
+    for (const r of [0, 0.5, 0.999]) {
+      const steps = flickerSteps(() => r);
+      expect(steps.length).toBeGreaterThan(0);
+      expect(steps[steps.length - 1].on).toBe(true);
+      expect(steps.reduce((sum, step) => sum + step.ms, 0)).toBeLessThan(800);
     }
   });
 });

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FONT_KEY } from './art/font';
+import { FONT_KEY, TINY_FONT_KEY } from './art/font';
 import { sfx } from './audio';
 import { ACTION_H, L } from './layout';
 
@@ -34,6 +34,14 @@ export function label(
   align: Align = 'left',
 ): Phaser.GameObjects.BitmapText {
   const t = scene.add.bitmapText(x, y, FONT_KEY, text.toUpperCase());
+  t.setTint(color);
+  t.setOrigin(align === 'left' ? 0 : align === 'center' ? 0.5 : 1, 0);
+  return t;
+}
+
+/** The same as label, in the small 3x5 font. */
+export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  const t = scene.add.bitmapText(x, y, TINY_FONT_KEY, text.toUpperCase());
   t.setTint(color);
   t.setOrigin(align === 'left' ? 0 : align === 'center' ? 0.5 : 1, 0);
   return t;
@@ -247,6 +255,33 @@ export function drawPaper(g: Phaser.GameObjects.Graphics, x: number, y: number, 
   }
   g.fillStyle(ink).fillRect(x, y + h - 1, 1, 2);
   g.fillStyle(ink).fillRect(x + w - 1, y + h - 1, 1, 2);
+}
+
+/** How far text sits in from the edge of a framed bubble. */
+export const BUBBLE_PAD = 5;
+
+/** A speech bubble: parchment in a teal frame, with folded corners and an optional rule under the name. */
+export function drawBubble(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, ruleY: number | null) {
+  const ink = 0x1b1d28;
+  const frame = 0x2a8f92;
+  const frameLight = 0x7adccd;
+  const paper = 0xf7ebcf;
+  const fold = 0xdcc8a0;
+  const foldShade = 0xbda67c;
+  g.clear();
+  g.fillStyle(ink).fillRect(x + 1, y, w - 2, h).fillRect(x, y + 1, w, h - 2);
+  g.fillStyle(frame).fillRect(x + 1, y + 1, w - 2, h - 2);
+  g.fillStyle(frameLight).fillRect(x + 2, y + 1, w - 4, 1);
+  g.fillStyle(paper).fillRect(x + 3, y + 3, w - 6, h - 6);
+  // The folded top-right corner
+  for (let i = 0; i < 6; i++) {
+    g.fillStyle(frame).fillRect(x + w - 3 - (6 - i), y + 3 + i, 6 - i, 1);
+    g.fillStyle(fold).fillRect(x + w - 9, y + 3 + i, i + 1, 1);
+    g.fillStyle(foldShade).fillRect(x + w - 9 + i, y + 3 + i, 1, 1);
+  }
+  // A smaller curl at the bottom right
+  g.fillStyle(fold).fillRect(x + w - 6, y + h - 4, 3, 1).fillRect(x + w - 5, y + h - 5, 2, 1).fillRect(x + w - 4, y + h - 6, 1, 1);
+  if (ruleY !== null) g.fillStyle(frame).fillRect(x + BUBBLE_PAD, ruleY, w - BUBBLE_PAD * 2 - 6, 1);
 }
 
 /**

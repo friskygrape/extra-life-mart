@@ -9,3 +9,10 @@ export const weekdayName = (day: number) => WEEKDAYS[weekdayIndex(day)];
 /** Rent comes out when Sunday closes. */
 export const isRentDay = (day: number) => weekdayIndex(day) === DAYS_PER_WEEK - 1;
 export const daysUntilRent = (day: number) => DAYS_PER_WEEK - 1 - weekdayIndex(day);
+
+/** The calendar's one-line heading, tightening up as the week number grows so it always fits. */
+export function calendarHeading(day: number): string {
+  const week = weekOf(day);
+  const weekText = week < 10 ? `WK ${week}` : week < 100 ? `W${week}` : String(week);
+  return `${weekdayName(day)} ${weekText}`;
+}

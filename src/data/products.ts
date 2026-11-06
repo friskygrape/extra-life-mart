@@ -1,3 +1,5 @@
+import { tinyTextWidth } from '../art/tinyGlyphs';
+
 export interface Product {
   id: string;
   name: string;
@@ -33,10 +35,10 @@ export function getProduct(id: string): Product {
   return product;
 }
 
-/** A snack's full name split over the two lines of a shelf label. */
-export function shelfLabelLines(name: string): [string, string] {
-  const space = name.indexOf(' ');
-  return space < 0 ? [name, ''] : [name.slice(0, space), name.slice(space + 1)];
+/** The name to print on a shelf label: the full name if it fits beside the count, otherwise its first word. */
+export function shelfLabelName(name: string, qty: number, plateWidth: number): string {
+  const room = plateWidth - tinyTextWidth(String(qty)) - 2;
+  return tinyTextWidth(name) <= room ? name : name.split(' ')[0];
 }
 
 export const SHELF_CAPACITY = 12;
