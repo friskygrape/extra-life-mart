@@ -1,4 +1,4 @@
-/** Small capitals for shelf labels and the calendar. Most are three pixels wide; M and W need five to read clearly. */
+/** Small capitals for shelf labels and the calendar. Used for the printing on machines. */
 export const TINY_GLYPHS: Record<string, string> = {
   ' ': '.|.|.|.|.',
   $: '.##|#..|.#.|..#|##.',
@@ -47,5 +47,5 @@ export function tinyTextWidth(text: string): number {
 }
 
 export function tinyAdvance(ch: string): number {
-  return ch === ' ' ? 2 : TINY_GLYPHS[ch].split('|')[0].length + 1;
+  return ch === ' ' ? 2 : 4;
 }

@@ -3,7 +3,7 @@ import { getProduct, shelfLabelName } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { CALENDAR_GRID, CALENDAR_H, CALENDAR_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, ITEM_H, ITEM_W, MONITOR_CENTRE_X, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
+import { CALENDAR_GRID, CALENDAR_H, CALENDAR_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONITOR_CENTRE_X, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
@@ -55,6 +55,12 @@ const CALENDAR_FUTURE = 0xfdf3da;
 const CALENDAR_PAST = 0xa9dcc8;
 const CALENDAR_TODAY = 0x1f9c8a;
 const SHELF_PLUS = 0x8a5a34;
+const REGISTER_GREEN = 0x5fd06a;
+const REGISTER_RIGHT = 78;
+const DOORS_SHUT_DEPTH = 3;
+/** Once open, the doors stand behind the customers. */
+const DOORS_OPEN_DEPTH = 1;
+const DOOR_FRAME_MS = 65;
 const MORE_SHELVES_INK = 0x1b3346;
 /** How much of a shelf's glow remains while its light blinks off. */
 const SHELF_LIGHT_OFF = 0.12;
@@ -68,7 +74,7 @@ const RENT_RED = 0xc9503f;
 /** The first instruction waits a beat after loading. The next follows almost at once. */
 const FIRST_GUIDE_SECONDS = 0.6;
 const NEXT_GUIDE_SECONDS = 0.15;
-const GUIDE_NOTE_W = 112;
+const GUIDE_NOTE_W = 100;
 const GUIDE_DEPTH = 7.5;
 const COMPUTER_W = COMPUTER_SPRITE_W;
 const computerTop = () => L.counterBottom - 6 + 2 - 60;
@@ -85,10 +91,12 @@ const WEATHER_TINT: Record<WeatherId, { colour: number; alpha: number }> = {
   cloudy: { colour: 0x8a99a8, alpha: 0.3 },
 };
 
-const tableItemX = (i: number) => 88 + i * 21;
-const tableY = () => L.counterTop + 21;
+/** Under the customer, starting just clear of the register. */
+const tipBarX = () => Math.max(REGISTER_RIGHT + 2, portraitX() - TIP_BAR_W / 2);
+const tableItemX = (i: number) => 92 + i * 21;
+const tableY = () => L.counterTop + Math.floor((L.counterBottom - L.counterTop) / 2) - 1;
 /** Cash or card lands right beside the register, in front of the customer. */
-const propX = () => 62;
+const propX = () => 98;
 const propY = () => L.counterTop + 16;
 const boxX = () => L.W - 74;
 const slotLeft = (slot: ShelfSlot) => columnX(slot.col);
@@ -129,7 +137,11 @@ export class ShackScene extends Phaser.Scene {
   private duskScene!: Phaser.GameObjects.Image;
   private nightScene!: Phaser.GameObjects.Image;
   private warmLight!: Phaser.GameObjects.Rectangle;
-  private shutter!: Phaser.GameObjects.Image;
+  private doorLeft!: Phaser.GameObjects.Image;
+  private doorRight!: Phaser.GameObjects.Image;
+  private closedBoard!: Phaser.GameObjects.Image;
+  /** Set once the doors have swung shut for the evening. */
+  private shutForTheNight = false;
   private closedSign!: Phaser.GameObjects.BitmapText;
   private portrait!: Phaser.GameObjects.Image;
   private bubble!: Phaser.GameObjects.Graphics;
@@ -200,10 +212,12 @@ export class ShackScene extends Phaser.Scene {
     this.duskScene = this.add.image(sceneX, sceneY, 'beach_dusk').setOrigin(0).setDepth(0.1).setAlpha(0);
     this.nightScene = this.add.image(sceneX, sceneY, 'beach_night').setOrigin(0).setDepth(0.2).setAlpha(0);
     this.portrait = this.add.image(-PORTRAIT_OFFSCREEN, windowY + windowH, 'cust_0').setOrigin(0.5, 1).setDepth(2);
-    this.shutter = this.add.image(windowX, windowY, 'shutter').setOrigin(0).setDepth(3);
-    this.add.image(windowX, windowY, 'window_doors').setOrigin(0).setDepth(1);
+    const doorLeftW = Math.floor(windowW / 2);
+    this.doorLeft = this.add.image(windowX, windowY, 'door_l_0').setOrigin(0).setScale(0.5).setDepth(DOORS_SHUT_DEPTH);
+    this.doorRight = this.add.image(windowX + doorLeftW, windowY, 'door_r_0').setOrigin(0).setScale(0.5).setDepth(DOORS_SHUT_DEPTH);
+    this.closedBoard = this.add.image(windowX + Math.floor(windowW / 2) - 32, windowY + Math.floor(windowH / 2) - 19, 'closed_sign').setOrigin(0).setDepth(3.4);
     this.closedSign = label(this, windowX + Math.floor(windowW / 2), windowY + Math.floor(windowH / 2) - 4, 'CLOSED', COLOURS.ink, 'center').setDepth(3.5);
-    this.add.image(0, 0, 'shop').setOrigin(0).setDepth(4);
+    this.add.image(0, 0, 'shop').setOrigin(0).setScale(0.5).setDepth(4);
     this.warmLight = this.add.rectangle(0, 0, W, L.H, 0xffa050, 0).setOrigin(0).setDepth(4.05);
 
     // The closed sign is a shortcut for opening up.
@@ -215,7 +229,8 @@ export class ShackScene extends Phaser.Scene {
       });
 
     const standBottom = L.counterBottom - 6;
-    this.add.image(2, standBottom, 'till').setOrigin(0, 1).setDepth(4.5);
+    this.add.image(1, standBottom, 'register').setOrigin(0, 1).setScale(0.5).setDepth(4.5);
+    tinyLabel(this, 66, standBottom - 68, '$0.00', REGISTER_GREEN, 'right').setDepth(4.6);
     const computerX = W - COMPUTER_W - 2;
     const computerY = computerTop();
     this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
@@ -230,6 +245,7 @@ export class ShackScene extends Phaser.Scene {
     this.bubbleTail = this.add.image(0, 0, 'bubble_tail').setOrigin(0).setDepth(5.2).setVisible(false);
     this.speech = this.add.graphics().setDepth(5).setVisible(false);
     this.speechTail = this.add.image(0, 0, 'bubble_tail').setOrigin(0).setDepth(5.2).setVisible(false);
+    this.add.image(Math.floor(W / 2), L.signY, 'sign').setOrigin(0.5, 0).setScale(0.5).setDepth(4.9);
     this.buildStars();
     this.buildWeather();
     this.buildTv();
@@ -254,7 +270,7 @@ export class ShackScene extends Phaser.Scene {
     this.moneyText = label(this, W - 4, hudText, '', COLOURS.gold, 'right').setDepth(7);
 
     SHELF_SLOTS.forEach((slot) => {
-      this.shelfLights.set(slot.id, this.add.image(slotLeft(slot), slotTop(slot), shelfGlowKey(slotWidth(slot))).setOrigin(0).setDepth(4.1));
+      this.shelfLights.set(slot.id, this.add.image(slotLeft(slot), slotTop(slot), shelfGlowKey(slotWidth(slot))).setOrigin(0).setScale(0.5).setDepth(4.1));
       this.add.rectangle(slotLeft(slot), slotTop(slot), slotWidth(slot), L.rowH, 0xffffff, 0)
         .setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
         .on('pointerup', () => this.tapSlot(slot));
@@ -320,7 +336,7 @@ export class ShackScene extends Phaser.Scene {
     const noteW = GUIDE_NOTE_W;
     const arrowX = step === 'sign' ? L.windowX + Math.floor(L.windowW / 2) : columnX(1) + Math.floor((columnX(2) - columnX(1)) / 2);
     // Beside the arrow, staying clear of the till on the left and the computer on the right.
-    const noteX = Math.max(52, Math.min(L.W - COMPUTER_W - 3 - noteW, arrowX - Math.floor(noteW / 2)));
+    const noteX = Math.max(REGISTER_RIGHT + 1, Math.min(L.W - COMPUTER_W - 3 - noteW, arrowX - Math.floor(noteW / 2)));
     if (step === 'sign') {
       // Below the sign, pointing up at it.
       const arrowY = L.windowY + Math.floor(L.windowH / 2) + 12 + arrowH / 2;
@@ -391,10 +407,10 @@ export class ShackScene extends Phaser.Scene {
   // ---- The sign, the TV, the calendar and the weather ---------------------
 
   private buildStars() {
-    const gap = 8;
-    const left = L.windowX + Math.floor(L.windowW / 2) - Math.floor((gap * MAX_STARS - 1) / 2);
+    const gap = 9;
+    const left = Math.floor(L.W / 2) - gap * 2;
     for (let i = 0; i < MAX_STARS; i++) {
-      this.starIcons.push(this.add.image(left + i * gap, L.signY + 15, 'star_off').setOrigin(0).setDepth(5));
+      this.starIcons.push(this.add.image(left + i * gap, L.signY + 35, 'sign_star_off').setScale(0.5).setDepth(5));
     }
   }
 
@@ -406,8 +422,8 @@ export class ShackScene extends Phaser.Scene {
         .setDepth(2.5).setAlpha(0.7).setVisible(false);
       this.rain.push(drop);
     }
-    this.tipBarBack = this.add.rectangle(portraitX() - TIP_BAR_W / 2, L.counterTop - 4, TIP_BAR_W, 3, 0x2c2a33).setOrigin(0).setDepth(5.05).setVisible(false);
-    this.tipBar = this.add.rectangle(portraitX() - TIP_BAR_W / 2 + 1, L.counterTop - 3, TIP_BAR_W - 2, 1, COLOURS.green).setOrigin(0).setDepth(5.06).setVisible(false);
+    this.tipBarBack = this.add.rectangle(tipBarX(), L.counterTop - 4, TIP_BAR_W, 3, 0x2c2a33).setOrigin(0).setDepth(5.05).setVisible(false);
+    this.tipBar = this.add.rectangle(tipBarX() + 1, L.counterTop - 3, TIP_BAR_W - 2, 1, COLOURS.green).setOrigin(0).setDepth(5.06).setVisible(false);
   }
 
   private buildTv() {
@@ -479,7 +495,7 @@ export class ShackScene extends Phaser.Scene {
   private refreshStars() {
     const earned = stars(session.state);
     this.starIcons.forEach((icon, i) => {
-      const key = i < earned ? 'star_on' : 'star_off';
+      const key = i < earned ? 'sign_star_on' : 'sign_star_off';
       if (icon.texture.key !== key) icon.setTexture(key);
     });
   }
@@ -524,7 +540,9 @@ export class ShackScene extends Phaser.Scene {
     this.hidePayment();
     this.clearTable();
     this.portrait.setX(-PORTRAIT_OFFSCREEN);
-    this.shutter.setY(L.windowY);
+    this.shutForTheNight = false;
+    this.setDoors(0, DOORS_SHUT_DEPTH);
+    this.closedBoard.setVisible(true);
     this.closedSign.setVisible(true);
     this.refreshInfoBoard();
     this.refreshShelves();
@@ -552,11 +570,7 @@ export class ShackScene extends Phaser.Scene {
       const w = slotWidth(slot);
       const labelY = y + L.rowH - SHELF_LABEL_H;
       if (shelf.productId && shelf.qty > 0) {
-        // A neat row of up to three. The plate underneath gives the exact count.
-        const left = x + Math.floor((w - ITEM_W * 3) / 2);
-        for (let i = 0; i < Math.min(shelf.qty, 3); i++) {
-          art.push(this.add.image(left + i * ITEM_W, labelY - 2 - ITEM_H, `item_${shelf.productId}`).setOrigin(0).setDepth(5.2));
-        }
+        art.push(...this.shelfStock(shelf.productId, shelf.qty, x, w, labelY - 1));
         const name = shelfLabelName(getProduct(shelf.productId).name, shelf.qty, w - 6);
         art.push(tinyLabel(this, x + 3, labelY + 3, name, COLOURS.ink).setDepth(6));
         art.push(tinyLabel(this, x + w - 3, labelY + 3, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
@@ -567,6 +581,23 @@ export class ShackScene extends Phaser.Scene {
     }
     this.refreshLockedRows();
     this.renderBubble();
+  }
+
+  /** A neat row of up to three. The plate underneath gives the exact count. */
+  private shelfStock(productId: string, qty: number, x: number, w: number, floorY: number): Phaser.GameObjects.Image[] {
+    const centre = x + Math.floor(w / 2);
+    if (productId === 'choco' && qty >= 3) {
+      return [this.add.image(centre, floorY, 'choco_group').setOrigin(0.5, 1).setScale(ITEM_SCALE).setDepth(5.2)];
+    }
+    const key = `item_${productId}`;
+    const itemW = this.textures.get(key).getSourceImage().width * ITEM_SCALE;
+    const count = Math.min(qty, 3);
+    const step = Math.min(itemW + 2, (w - 4 - itemW) / 2);
+    return Array.from({ length: count }, (_, i) => {
+      const middleFirst = count === 3 && i === 1;
+      return this.add.image(Math.round(centre + (i - (count - 1) / 2) * step), floorY, key)
+        .setOrigin(0.5, 1).setScale(ITEM_SCALE).setDepth(middleFirst ? 5.21 : 5.2);
+    });
   }
 
   private refreshLockedRows() {
@@ -628,7 +659,7 @@ export class ShackScene extends Phaser.Scene {
     if (session.state.day === 1 && shelfIsEmpty(slot.id)) this.soldOutPending = slot.id;
     sfx.pickUp();
     this.spoken = '';
-    const image = this.add.image(slotLeft(slot) + slotWidth(slot) / 2, slotTop(slot) + 20, `item_${productId}`).setDepth(9);
+    const image = this.add.image(slotLeft(slot) + slotWidth(slot) / 2, slotTop(slot) + 20, `item_${productId}`).setScale(ITEM_SCALE).setDepth(9);
     const item: TableItem = { productId, image };
     this.table.push(item);
     image.setInteractive({ useHandCursor: true }).on('pointerup', () => this.takeBack(item));
@@ -720,7 +751,7 @@ export class ShackScene extends Phaser.Scene {
     shown.forEach((id, i) => {
       this.time.delayedCall(180 + i * 90, () => {
         sfx.pop();
-        const icon = this.add.image(boxX(), tableY() - 4, `item_${id}`).setDepth(10).setScale(0.5);
+        const icon = this.add.image(boxX(), tableY() - 4, `item_${id}`).setDepth(10).setScale(ITEM_SCALE * 0.5);
         this.tweens.add({
           targets: icon,
           y: tableY() - 30,
@@ -1024,6 +1055,33 @@ export class ShackScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: tableY() - 15, alpha: 0, duration: 1100, delay: 300, onComplete: () => t.destroy() });
   }
 
+  /** Shows the doors at one point in their swing: frame 0 is shut. */
+  private setDoors(frame: number, depth: number) {
+    this.doorLeft.setTexture(`door_l_${frame}`).setDepth(depth);
+    this.doorRight.setTexture(`door_r_${frame}`).setDepth(depth);
+  }
+
+  private swingDoors(from: number, to: number, then: () => void) {
+    const step = from < to ? 1 : -1;
+    this.setDoors(from, DOORS_SHUT_DEPTH);
+    for (let i = 1; i <= Math.abs(to - from); i++) {
+      this.time.delayedCall(i * DOOR_FRAME_MS, () => {
+        this.setDoors(from + step * i, DOORS_SHUT_DEPTH);
+        if (i === Math.abs(to - from)) then();
+      });
+    }
+  }
+
+  /** The last customer has gone: swing the doors shut, and hang up the sign. */
+  private shutDoorsForTheNight() {
+    this.shutForTheNight = true;
+    sfx.doorClose();
+    this.swingDoors(DOOR_FRAMES - 1, 0, () => {
+      this.closedBoard.setVisible(true);
+      this.closedSign.setVisible(true);
+    });
+  }
+
   private openShop() {
     if (!anyShelfStocked(session.state)) {
       sfx.error();
@@ -1036,9 +1094,10 @@ export class ShackScene extends Phaser.Scene {
     session.save();
     this.spawnIn = 1;
     session.toast("WE'RE OPEN!");
-    sfx.shutter();
+    sfx.doorOpen();
     this.closedSign.setVisible(false);
-    this.tweens.add({ targets: this.shutter, y: L.windowY - L.windowH, duration: 600, ease: 'Quad.easeIn' });
+    this.closedBoard.setVisible(false);
+    this.swingDoors(0, DOOR_FRAMES - 1, () => this.setDoors(DOOR_FRAMES - 1, DOORS_OPEN_DEPTH));
   }
 
   /** With nothing to sell, the only way forward is tomorrow's delivery. */
@@ -1073,6 +1132,7 @@ export class ShackScene extends Phaser.Scene {
         session.toast('CLOSING TIME!');
       }
     }
+    if (!this.shutForTheNight && this.everyoneServed()) this.shutDoorsForTheNight();
     if (session.phase === 'open' || session.phase === 'closing') {
       if (!this.current && !this.busy && !session.modal && this.queue.length > 0) this.callNext();
     }

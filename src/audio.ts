@@ -128,8 +128,16 @@ export const sfx = {
     tone(1500, 0.14, { type: 'triangle', vol: 0.04 });
     tone(1180, 0.22, { type: 'triangle', vol: 0.04, at: 0.13 });
   }),
-  shutter: sound(() => {
-    for (let i = 0; i < 9; i++) noise(0.05, { freq: 700 + i * 90, vol: 0.05, at: i * 0.06 });
+  /** The shop bell, as the doors swing open. */
+  doorOpen: sound(() => {
+    tone(1318, 0.22, { vol: 0.04 });
+    tone(1760, 0.3, { vol: 0.035, at: 0.09 });
+    noise(0.12, { freq: 380, vol: 0.03 });
+  }),
+  /** A soft thump as the doors come together. */
+  doorClose: sound(() => {
+    noise(0.1, { freq: 300, vol: 0.05, at: 0.42 });
+    tone(150, 0.1, { vol: 0.05, at: 0.42 });
   }),
   thud: sound(() => {
     tone(130, 0.16, { type: 'sine', slideTo: 55, vol: 0.2 });

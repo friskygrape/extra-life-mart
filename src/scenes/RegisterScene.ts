@@ -434,7 +434,7 @@ export class RegisterScene extends Phaser.Scene {
 
   /** The terminal rises up from behind the counter, and sinks back when you're done. */
   private buildTerminal() {
-    const x = 106;
+    const x = 134;
     const restY = L.counterBottom - 34;
     // Tapping the terminal itself shouldn't count as tapping outside.
     const body = this.add.image(0, 0, 'terminal').setInteractive();

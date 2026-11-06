@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FONT_KEY, TINY_FONT_KEY } from './art/font';
+import { FONT_KEY, FONT_SIZE, TINY_FONT_KEY, TINY_FONT_SIZE } from './art/font';
 import { sfx } from './audio';
 import { ACTION_H, L } from './layout';
 
@@ -33,7 +33,7 @@ export function label(
   color = COLOURS.white,
   align: Align = 'left',
 ): Phaser.GameObjects.BitmapText {
-  const t = scene.add.bitmapText(x, y, FONT_KEY, text.toUpperCase());
+  const t = scene.add.bitmapText(x, y, FONT_KEY, text.toUpperCase(), FONT_SIZE);
   t.setTint(color);
   t.setOrigin(align === 'left' ? 0 : align === 'center' ? 0.5 : 1, 0);
   return t;
@@ -41,7 +41,7 @@ export function label(
 
 /** The same as label, in the small 3x5 font. */
 export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
-  const t = scene.add.bitmapText(x, y, TINY_FONT_KEY, text.toUpperCase());
+  const t = scene.add.bitmapText(x, y, TINY_FONT_KEY, text.toUpperCase(), TINY_FONT_SIZE);
   t.setTint(color);
   t.setOrigin(align === 'left' ? 0 : align === 'center' ? 0.5 : 1, 0);
   return t;

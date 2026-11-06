@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
 import { formatCents } from '../logic/money';
@@ -45,7 +46,7 @@ export class CelebrationScene extends Phaser.Scene {
     if (data.kind === 'licence') {
       const product = getProduct(data.productId);
       heading(10, 'LICENCE GRANTED', INK_MUTED);
-      card.add(this.add.image(0, -8, `item_${product.id}`).setScale(4));
+      card.add(this.add.image(0, -8, `item_${product.id}`).setScale(ITEM_SCALE * 4));
       heading(114, product.name, COLOURS.ink);
       heading(128, `+${formatCents(product.retail - product.wholesale)} A SALE`, INK_GOOD);
     } else {

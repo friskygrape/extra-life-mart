@@ -13,7 +13,7 @@ import { ShackScene } from './scenes/ShackScene';
 import { StockScene } from './scenes/StockScene';
 import { SummaryScene } from './scenes/SummaryScene';
 import { session } from './session';
-import { computeLayout, setLayout, L, type Layout } from './layout';
+import { RENDER_SCALE, computeLayout, setLayout, L, type Layout } from './layout';
 
 function readSafeArea() {
   const style = getComputedStyle(document.documentElement);
@@ -33,8 +33,8 @@ setLayout(measure());
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
-  width: L.W,
-  height: L.H,
+  width: L.W * RENDER_SCALE,
+  height: L.H * RENDER_SCALE,
   backgroundColor: '#1b3346',
   pixelArt: true,
   roundPixels: true,
@@ -52,12 +52,12 @@ function onResize() {
   const next = measure();
   if (next.W === L.W && next.H === L.H) {
     rebuildPending = false;
-    game.scale.setZoom(next.zoom);
+    game.scale.setZoom(next.zoom / RENDER_SCALE);
     return;
   }
   rebuildPending = true;
   const parent = document.getElementById('game')!;
-  game.scale.setZoom(Math.min(parent.clientWidth / L.W, parent.clientHeight / L.H));
+  game.scale.setZoom(Math.min(parent.clientWidth / L.W, parent.clientHeight / L.H) / RENDER_SCALE);
   if (session.phase === 'morning' && !session.modal) window.location.reload();
 }
 
@@ -67,7 +67,13 @@ session.events.on('begin-day', () => {
 
 unlockAudio();
 window.addEventListener('pointerdown', () => startMusic(), { once: true });
-game.events.once(Phaser.Core.Events.READY, () => game.scale.setZoom(L.zoom));
+game.events.once(Phaser.Core.Events.READY, () => {
+  game.scale.setZoom(L.zoom / RENDER_SCALE);
+  // Every scene is laid out in game pixels, and its camera doubles them onto the canvas.
+  for (const scene of game.scene.scenes) {
+    scene.sys.events.on(Phaser.Scenes.Events.CREATE, () => scene.cameras.main.setOrigin(0).setZoom(RENDER_SCALE));
+  }
+});
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
   window.clearTimeout(resizeTimer);

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ITEM_SCALE } from '../art/textures';
 import { unlockedProducts } from '../logic/licences';
 import { session } from '../session';
 import { COLOURS, HEIGHT, ScrollList, WIDTH, backdrop, closeButton, label, secondaryButton } from '../ui';
@@ -30,7 +31,7 @@ export class InventoryScene extends Phaser.Scene {
       const count = have(product.id);
       const onShelves = state.shelves.filter((s) => s.productId === product.id).reduce((sum, s) => sum + s.qty, 0);
       list.add(this.add.rectangle(4, y, WIDTH - 8, ROW_H - 2, COLOURS.panel).setOrigin(0));
-      list.add(this.add.image(16, y + 14, `item_${product.id}`));
+      list.add(this.add.image(16, y + 14, `item_${product.id}`).setScale(ITEM_SCALE));
       list.add(label(this, 28, y + 4, product.name, count > 0 ? COLOURS.white : COLOURS.dim));
       list.add(label(this, 28, y + 15, `ON SHELVES ${onShelves}`, COLOURS.dim));
       list.add(label(this, WIDTH - 12, y + 10, String(count), count > 0 ? COLOURS.gold : COLOURS.dim, 'right'));

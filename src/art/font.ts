@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TINY_GLYPHS, tinyAdvance } from './tinyGlyphs';
+import { TINY_GLYPHS } from './tinyGlyphs';
 
 export { TINY_GLYPHS };
 
@@ -61,77 +61,68 @@ export const GLYPHS: Record<string, string> = {
 
 export const FONT_KEY = 'pixel';
 export const TINY_FONT_KEY = 'pixel_tiny';
-const TINY_CHAR_W = 6;
-const TINY_CHAR_H = 6;
+/** Sizes to ask for: Phaser measures these against a font's cell width, so half of it lands on the fine grid. */
+export const FONT_SIZE = 6;
+export const TINY_FONT_SIZE = 4;
 export const CHAR_W = 6;
 export const CHAR_H = 8;
 
-/** Builds the white 3x5 font, with a narrow word space so long names fit one line. */
-function createTinyFont(scene: Phaser.Scene): void {
-  const chars = Object.keys(TINY_GLYPHS).join('');
-  const tex = scene.textures.createCanvas(TINY_FONT_KEY, chars.length * TINY_CHAR_W, TINY_CHAR_H)!;
+/** Everything is drawn at twice the game's pixels, so text can have the mock-up's finer shapes. */
+const FINE_SCALE = 2;
+const MAIN_CELL = { w: CHAR_W * FINE_SCALE, h: CHAR_H * FINE_SCALE };
+const SMALL_CELL = { w: 8, h: 12 };
+/** A plain zero for small text, and one with a centre dot for large text, in place of the table's slashed one. */
+const PLAIN_ZERO = '.###.|#...#|#...#|#...#|#...#|#...#|.###.';
+const DOTTED_ZERO = '.###.|#...#|#...#|#.#.#|#...#|#...#|.###.';
+
+type Raster = (ctx: CanvasRenderingContext2D, ox: number, glyph: string) => void;
+
+/** Traces a glyph's 5x7 skeleton with a pen of the given width, then softens its outer corners. */
+function tracer(mapX: (x: number) => number, mapY: (y: number) => number, pen: number, soften: boolean): Raster {
+  return (ctx, ox, glyph) => {
+    const on = new Set<string>();
+    glyph.split('|').forEach((row, y) => [...row].forEach((px, x) => {
+      if (px !== '#') return;
+      for (let dy = 0; dy < pen; dy++) for (let dx = 0; dx < pen; dx++) on.add(`${mapX(x) + dx},${mapY(y) + dy}`);
+    }));
+    const has = (x: number, y: number) => on.has(`${x},${y}`);
+    for (const key of on) {
+      const [x, y] = key.split(',').map(Number);
+      const corner = (!has(x - 1, y) || !has(x + 1, y)) && (!has(x, y - 1) || !has(x, y + 1))
+        && [has(x - 1, y), has(x + 1, y), has(x, y - 1), has(x, y + 1)].filter(Boolean).length === 2;
+      if (!(soften && corner)) ctx.fillRect(ox + x, y, 1, 1);
+    }
+  };
+}
+
+function buildFont(scene: Phaser.Scene, key: string, cell: { w: number; h: number }, raster: Raster, zero: string, lineSpacing: number) {
+  const chars = Object.keys(GLYPHS).join('');
+  const tex = scene.textures.createCanvas(key, chars.length * cell.w, cell.h)!;
   const ctx = tex.getContext();
   ctx.fillStyle = '#ffffff';
-  [...chars].forEach((ch, i) => {
-    TINY_GLYPHS[ch].split('|').forEach((row, y) => {
-      [...row].forEach((px, x) => {
-        if (px === '#') ctx.fillRect(i * TINY_CHAR_W + x, y, 1, 1);
-      });
-    });
-  });
+  [...chars].forEach((ch, i) => raster(ctx, i * cell.w, ch === '0' ? zero : GLYPHS[ch]));
   tex.refresh();
   const data = Phaser.GameObjects.RetroFont.Parse(scene, {
-    image: TINY_FONT_KEY,
-    width: TINY_CHAR_W,
-    height: TINY_CHAR_H,
+    image: key,
+    width: cell.w,
+    height: cell.h,
     chars,
     charsPerRow: chars.length,
     'offset.x': 0,
     'offset.y': 0,
     'spacing.x': 0,
     'spacing.y': 0,
-    lineSpacing: 1,
+    lineSpacing,
   });
-  // The parsed font is fixed-width, so give each letter its own width. Phaser's types don't cover these fields.
-  const font = data as unknown as { data: { chars: Record<number, { width: number; u0: number; u1: number; xAdvance: number }> } };
-  for (const ch of chars) {
-    const glyph = font.data.chars[ch.charCodeAt(0)];
-    const width = Math.max(1, tinyAdvance(ch) - 1);
-    glyph.u1 = glyph.u0 + ((glyph.u1 - glyph.u0) * width) / TINY_CHAR_W;
-    glyph.width = width;
-    glyph.xAdvance = tinyAdvance(ch);
-  }
-  scene.cache.bitmapFont.add(TINY_FONT_KEY, data);
+  scene.cache.bitmapFont.add(key, data);
+  return data;
 }
 
-/** Builds a white 5x7 bitmap font from the glyph table; tint it for colour. */
+/** Builds the two white fonts; tint them for colour. */
 export function createPixelFont(scene: Phaser.Scene): void {
-  const chars = Object.keys(GLYPHS).join('');
-  const tex = scene.textures.createCanvas(FONT_KEY, chars.length * CHAR_W, CHAR_H)!;
-  const ctx = tex.getContext();
-  ctx.fillStyle = '#ffffff';
-  [...chars].forEach((ch, i) => {
-    GLYPHS[ch].split('|').forEach((row, y) => {
-      [...row].forEach((px, x) => {
-        if (px === '#') ctx.fillRect(i * CHAR_W + x, y, 1, 1);
-      });
-    });
-  });
-  tex.refresh();
-  scene.cache.bitmapFont.add(
-    FONT_KEY,
-    Phaser.GameObjects.RetroFont.Parse(scene, {
-      image: FONT_KEY,
-      width: CHAR_W,
-      height: CHAR_H,
-      chars,
-      charsPerRow: chars.length,
-      'offset.x': 0,
-      'offset.y': 0,
-      'spacing.x': 0,
-      'spacing.y': 0,
-      lineSpacing: 2,
-    }),
-  );
-  createTinyFont(scene);
+  buildFont(scene, FONT_KEY, MAIN_CELL, tracer((x) => x * 2, (y) => y * 2, 3, true), DOTTED_ZERO, 4);
+  const small = buildFont(scene, TINY_FONT_KEY, SMALL_CELL, tracer((x) => [0, 1, 3, 4, 5][x], (y) => [0, 1, 3, 4, 5, 7, 8][y], 2, false), PLAIN_ZERO, 2);
+  // A narrow word space helps long names fit one line. Phaser's types don't cover this field.
+  const font = small as unknown as { data: { chars: Record<number, { xAdvance: number }> } };
+  font.data.chars[' '.charCodeAt(0)].xAdvance = 4;
 }

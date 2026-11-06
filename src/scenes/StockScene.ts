@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { SHELF_CAPACITY, getProduct } from '../data/products';
 import { emptyShelf, stockShelf } from '../logic/inventory';
@@ -110,7 +111,7 @@ export class StockScene extends Phaser.Scene {
       row.setAlpha(usable ? 1 : 0.5);
       if (isSelected) row.setStrokeStyle(1, COLOURS.white);
       if (usable) row.setInteractive({ useHandCursor: true }).on('pointerup', list.guard(() => this.select(product.id), null));
-      list.add(this.add.image(16, y + 14, `item_${product.id}`).setAlpha(alpha));
+      list.add(this.add.image(16, y + 14, `item_${product.id}`).setScale(ITEM_SCALE).setAlpha(alpha));
       list.add(label(this, 28, y + 4, product.name).setAlpha(alpha));
       list.add(label(this, 28, y + 15, `HAVE ${this.have(product.id)}`, isSelected ? COLOURS.white : COLOURS.dim).setAlpha(alpha));
       if (isSelected) list.add(label(this, WIDTH - 12, y + 10, '\u2713', COLOURS.white, 'right'));

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { BOX_SIZE, PRODUCTS, type Product } from '../data/products';
 import { SHELF_ROW_PRICES } from '../data/shelves';
@@ -90,7 +91,7 @@ export class OrderScene extends Phaser.Scene {
   private lockedRow(product: Product, y: number, list: ScrollList) {
     const { state } = session;
     const price = product.licence!;
-    list.add(this.add.image(12, y + 17, `item_${product.id}`));
+    list.add(this.add.image(12, y + 17, `item_${product.id}`).setScale(ITEM_SCALE));
     list.add(label(this, 24, y + 6, product.name));
     list.add(label(this, 24, y + 18, 'LICENCE', COLOURS.dim));
     list.addButton(button(this, WIDTH - BUTTONS.rowW - 6, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), list.guard(() => {
@@ -105,7 +106,7 @@ export class OrderScene extends Phaser.Scene {
     const boxes = (this.cart[product.id] ?? 0) / BOX_SIZE;
     const have = session.state.stockroom[product.id] ?? 0;
     const coming = (session.state.pendingOrders[product.id] ?? 0) + (session.state.arrivals[product.id] ?? 0);
-    list.add(this.add.image(12, y + 17, `item_${product.id}`));
+    list.add(this.add.image(12, y + 17, `item_${product.id}`).setScale(ITEM_SCALE));
     list.add(label(this, 24, y + 2, product.name));
     list.add(label(this, 24, y + 12, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
     list.add(label(this, 24, y + 22, coming > 0 ? `HAVE ${have} COMING ${coming}` : `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
