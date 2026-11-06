@@ -913,6 +913,10 @@ export class ShackScene extends Phaser.Scene {
     if (session.phase === 'morning') {
       return nothingToSell(session.state) ? this.skipDay() : this.openShop();
     }
+    if (this.everyoneServed()) {
+      sfx.click();
+      return this.closeBooks();
+    }
     if (this.readyToPay) this.startPayment();
   }
 
@@ -1016,9 +1020,6 @@ export class ShackScene extends Phaser.Scene {
     }
     if (session.phase === 'open' || session.phase === 'closing') {
       if (!this.current && !this.busy && !session.modal && this.queue.length > 0) this.callNext();
-      if (session.phase === 'closing' && !this.current && !this.busy && !session.modal && this.queue.length === 0) {
-        this.closeBooks();
-      }
     }
     this.tickDelivery(dt);
     this.updateRain(dt);
@@ -1042,6 +1043,11 @@ export class ShackScene extends Phaser.Scene {
     setMusicMood(session.phase === 'morning' ? 'morning' : dusk > 0 ? 'evening' : 'day');
   }
 
+  /** Past closing time with nobody left to serve: the day waits for you to close it. */
+  private everyoneServed(): boolean {
+    return session.phase === 'closing' && !this.current && !this.busy && this.queue.length === 0;
+  }
+
   private updateHud() {
     const { state, phase } = session;
     this.dayText.setText(`DAY ${state.day}`);
@@ -1049,9 +1055,9 @@ export class ShackScene extends Phaser.Scene {
     this.moneyText.setText(formatCents(state.balance));
     this.stockCount.setText(String(this.stockTotal()));
 
-    const showAction = phase === 'morning' || (this.readyToPay && this.current !== null);
+    const showAction = phase === 'morning' || this.everyoneServed() || (this.readyToPay && this.current !== null);
     this.action.setVisible(showAction);
-    this.action.setLabel(phase === 'morning' ? (nothingToSell(state) ? 'SKIP DAY' : 'OPEN') : 'TAKE PAYMENT');
+    this.action.setLabel(phase === 'morning' ? (nothingToSell(state) ? 'SKIP DAY' : 'OPEN') : this.everyoneServed() ? 'CLOSE DAY' : 'TAKE PAYMENT');
     this.hint.setText(this.hintText());
   }
 
@@ -1072,7 +1078,7 @@ export class ShackScene extends Phaser.Scene {
       if (this.current.greeting) return 'TAP TO SEE THEIR ORDER';
       return this.readyToPay ? 'TAP A TABLE ITEM TO CHANGE IT' : 'TAP SHELVES TO FETCH ITEMS';
     }
-    if (phase === 'closing') return waiting ? 'LAST CUSTOMERS' : 'CLOSING UP';
+    if (phase === 'closing') return waiting ? 'LAST CUSTOMERS' : 'THE STORE HAS CLOSED';
     return 'TAP SHELVES TO RESTOCK';
   }
 
