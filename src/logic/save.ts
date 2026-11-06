@@ -4,7 +4,6 @@ import { START_REPUTATION } from './reputation';
 import { SAVE_VERSION, type DayStats, type GameState } from './state';
 
 const SAVE_KEY = 'extra-life-mart-save';
-const FIRST_VERSION_WITH_MIGRATION = 4;
 
 export type SaveStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -23,7 +22,7 @@ export function saveGame(state: GameState, store: SaveStore): void {
 function fromVersion4(old: GameState): GameState {
   return {
     ...old,
-    version: SAVE_VERSION,
+    version: 5,
     day: old.day - weekdayIndex(old.day),
     arrivals: { ...old.pendingOrders },
     pendingOrders: {},
@@ -37,6 +36,11 @@ function fromVersion4(old: GameState): GameState {
   };
 }
 
+/** Anyone past the first day has already opened up, so they don't need the first-day guide. */
+function fromVersion5(old: GameState): GameState {
+  return { ...old, version: SAVE_VERSION, hasOpened: old.day > 1 };
+}
+
 /** Returns null when there's no save, or it's unreadable or from a version we can't convert. */
 export function loadGame(store: SaveStore): GameState | null {
   try {
@@ -44,7 +48,8 @@ export function loadGame(store: SaveStore): GameState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as GameState;
     if (parsed.version === SAVE_VERSION) return parsed;
-    return parsed.version === FIRST_VERSION_WITH_MIGRATION ? fromVersion4(parsed) : null;
+    if (parsed.version === 5) return fromVersion5(parsed);
+    return parsed.version === 4 ? fromVersion5(fromVersion4(parsed)) : null;
   } catch {
     return null;
   }

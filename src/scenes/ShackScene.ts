@@ -60,9 +60,13 @@ const FIRST_GUIDE_SECONDS = 0.6;
 const NEXT_GUIDE_SECONDS = 0.15;
 const GUIDE_NOTE_W = 112;
 const GUIDE_DEPTH = 7.5;
+const COMPUTER_W = 50;
+const computerTop = () => L.counterBottom - 6 + 2 - 60;
+const shelfIsEmpty = (id: string) => session.state.shelves.find((s) => s.id === id)?.qty === 0;
 const GUIDE_TEXT: Record<OnboardingStep, string> = {
   shelf: 'ADD ITEMS TO\nTHE SHELF\nBEFORE OPENING',
   sign: "OPEN THE STORE\nWHEN YOU'RE READY\nTO START SELLING",
+  computer: 'ORDER MORE SNACKS TO KEEP\nYOUR SHELVES STOCKED',
 };
 const WEATHER_TINT: Record<WeatherId, { colour: number; alpha: number }> = {
   sunny: { colour: 0xffffff, alpha: 0 },
@@ -165,6 +169,10 @@ export class ShackScene extends Phaser.Scene {
   private guideStep: OnboardingStep | null = null;
   private guideShown = false;
   private guideWait = FIRST_GUIDE_SECONDS;
+  /** The shelf a first-day customer just emptied, once they've been served. */
+  private soldOutShelf: string | null = null;
+  private soldOutPending: string | null = null;
+  private computerTipDone = false;
 
   constructor() {
     super('Shack');
@@ -196,13 +204,16 @@ export class ShackScene extends Phaser.Scene {
 
     const standBottom = L.counterBottom - 6;
     this.add.image(2, standBottom, 'till').setOrigin(0, 1).setDepth(4.5);
-    const computerX = W - 52;
-    const computerY = standBottom + 2 - 60;
+    const computerX = W - COMPUTER_W - 2;
+    const computerY = computerTop();
     this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
     label(this, computerX + 24, computerY + 8, 'ORDER', COLOURS.green, 'center').setDepth(4.6);
     label(this, computerX + 24, computerY + 18, 'STOCKS', COLOURS.green, 'center').setDepth(4.6);
-    this.add.rectangle(computerX, computerY, 50, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
-      .on('pointerup', () => this.openModal('Order'));
+    this.add.rectangle(computerX, computerY, COMPUTER_W, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => {
+        this.finishComputerTip();
+        this.openModal('Order');
+      });
 
     this.bubble = this.add.graphics().setDepth(5).setVisible(false);
     this.bubbleTail = this.add.image(0, 0, 'bubble_tail').setOrigin(1, 1).setDepth(5.2).setVisible(false);
@@ -255,6 +266,7 @@ export class ShackScene extends Phaser.Scene {
     });
     session.events.on('order-placed', (rush: boolean) => {
       if (rush) this.deliveryIn = DELIVERY_SECONDS;
+      this.finishComputerTip();
     });
     this.beginDay();
     // A game that ended stays ended, even after a refresh.
@@ -279,19 +291,40 @@ export class ShackScene extends Phaser.Scene {
     this.guideText.setVisible(visible);
   }
 
+  /** The arrow's place, and a note that stays clear of whatever matters at that step. */
+  private guidePlacement(step: OnboardingStep, noteH: number) {
+    const arrowH = this.guideArrow.height;
+    if (step === 'computer') {
+      // The note goes in the bottom panel, because near the computer it would cover the customer's order.
+      const noteX = 28;
+      return {
+        arrowX: L.W - COMPUTER_W / 2 - 2,
+        arrowY: computerTop() - arrowH / 2 + 1,
+        noteX,
+        noteY: L.stripTop + 3,
+        noteW: L.W - noteX - 4,
+      };
+    }
+    const noteW = GUIDE_NOTE_W;
+    const arrowX = step === 'sign' ? L.windowX + Math.floor(L.windowW / 2) : columnX(1) + Math.floor((columnX(2) - columnX(1)) / 2);
+    // Beside the arrow, staying clear of the till on the left and the computer on the right.
+    const noteX = Math.max(46, Math.min(L.W - 52 - noteW, arrowX - Math.floor(noteW / 2)));
+    if (step === 'sign') {
+      // Below the sign, pointing up at it.
+      const arrowY = L.windowY + Math.floor(L.windowH / 2) + 12 + arrowH / 2;
+      return { arrowX, arrowY, noteX, noteY: arrowY + arrowH / 2 + 1, noteW };
+    }
+    // Above the shelf, pointing down at it.
+    const arrowY = L.shelfTop - arrowH / 2 + 1;
+    return { arrowX, arrowY, noteX, noteY: arrowY - arrowH / 2 - 1 - noteH, noteW };
+  }
+
   private showGuide(step: OnboardingStep) {
     const pointsAtSign = step === 'sign';
-    const arrowX = pointsAtSign ? L.windowX + Math.floor(L.windowW / 2) : columnX(1) + Math.floor((columnX(2) - columnX(1)) / 2);
     this.guideText.setText(GUIDE_TEXT[step]);
     const noteH = this.guideText.height + 5;
-    const arrowH = this.guideArrow.height;
-    // Below the sign, pointing up at it. Above the shelf, pointing down at it.
-    const signBottom = L.windowY + Math.floor(L.windowH / 2) + 11;
-    const arrowY = pointsAtSign ? signBottom + 1 + arrowH / 2 : L.shelfTop - arrowH / 2 + 1;
-    const noteY = pointsAtSign ? arrowY + arrowH / 2 + 1 : arrowY - arrowH / 2 - 1 - noteH;
-    // Beside the arrow, staying clear of the till on the left and the computer on the right.
-    const noteX = Math.max(46, Math.min(L.W - 52 - GUIDE_NOTE_W, arrowX - Math.floor(GUIDE_NOTE_W / 2)));
-    drawPaper(this.guideNote, noteX, noteY, GUIDE_NOTE_W, noteH, false);
+    const { arrowX, arrowY, noteX, noteY, noteW } = this.guidePlacement(step, noteH);
+    drawPaper(this.guideNote, noteX, noteY, noteW, noteH, false);
     this.guideText.setPosition(noteX + 3, noteY + 3);
 
     this.tweens.killTweensOf(this.guideArrow);
@@ -303,8 +336,20 @@ export class ShackScene extends Phaser.Scene {
     sfx.hint();
   }
 
+  /** Once they've gone to the computer or refilled the shelf, the tip has done its job. */
+  private finishComputerTip() {
+    if (this.soldOutShelf) this.computerTipDone = true;
+  }
+
+  private shelfStillSoldOut(): boolean {
+    if (!this.soldOutShelf || this.computerTipDone) return false;
+    const shelf = session.state.shelves.find((s) => s.id === this.soldOutShelf);
+    if (shelf && shelf.qty > 0) this.computerTipDone = true;
+    return !this.computerTipDone;
+  }
+
   private updateGuide(dt: number) {
-    const step = onboardingStep(session.state, session.phase);
+    const step = onboardingStep(session.state, session.phase, this.shelfStillSoldOut());
     if (step !== this.guideStep) {
       // The very first instruction keeps its longer wait.
       if (this.guideStep !== null) this.guideWait = NEXT_GUIDE_SECONDS;
@@ -315,7 +360,15 @@ export class ShackScene extends Phaser.Scene {
     if (!step) return;
     // Out of the way behind other screens, and back without another chime.
     if (session.modal) return this.setGuideVisible(false);
-    if (this.guideShown) return this.setGuideVisible(true);
+    if (this.guideShown) {
+      this.setGuideVisible(true);
+      // TAKE PAYMENT needs the space in the bottom panel.
+      if (step === 'computer' && this.action.rect.visible) {
+        this.guideNote.setVisible(false);
+        this.guideText.setVisible(false);
+      }
+      return;
+    }
     this.guideWait -= dt;
     if (this.guideWait <= 0) {
       this.guideShown = true;
@@ -532,6 +585,7 @@ export class ShackScene extends Phaser.Scene {
     }
     if (this.table.length >= TABLE_CAPACITY) return;
     if (!takeFromShelf(session.state, slot.id, productId)) return;
+    if (session.state.day === 1 && shelfIsEmpty(slot.id)) this.soldOutPending = slot.id;
     sfx.pickUp();
     this.spoken = '';
     const image = this.add.image(slotLeft(slot) + slotWidth(slot) / 2, slotTop(slot) + 20, `item_${productId}`).setDepth(9);
@@ -887,6 +941,8 @@ export class ShackScene extends Phaser.Scene {
         this.dismiss();
         this.floatMoney(charged + tip);
         this.refreshStars();
+        // Saved until now, so the first-day tip can't appear in the middle of a sale.
+        if (this.soldOutPending) this.soldOutShelf = this.soldOutPending;
       },
       onBack: () => {
         this.hidePayment();
@@ -917,6 +973,7 @@ export class ShackScene extends Phaser.Scene {
     }
     session.phase = 'open';
     session.clock = 0;
+    session.state.hasOpened = true;
     session.save();
     this.spawnIn = 1;
     session.toast("WE'RE OPEN!");
@@ -999,6 +1056,8 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private hintText(): string {
+    // The first-day tip's note takes over the panel, so nothing should peek out from behind it.
+    if (this.guideStep === 'computer' && this.guideNote.visible) return '';
     if (performance.now() < session.messageUntil) return session.message;
     const { state, phase, waiting } = session;
     if (this.box && !this.boxOpening) return 'TAP THE BOX TO UNPACK IT';

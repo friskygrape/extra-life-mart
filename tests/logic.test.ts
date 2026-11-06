@@ -349,15 +349,24 @@ describe('save', () => {
   });
   it('brings a version 4 save up to date without losing progress', () => {
     const store = memoryStore();
-    const { arrivals, weather, forecast, reputation, rentBehind, closed, totalServed, ...rest } = newGame();
+    const { arrivals, weather, forecast, reputation, rentBehind, closed, totalServed, hasOpened, ...rest } = newGame();
     const { tips, ...oldStats } = rest.stats;
     store.setItem('extra-life-mart-save', JSON.stringify({ ...rest, version: 4, day: 23, balance: 54321, stats: oldStats, pendingOrders: { soda: 12 } }));
     const loaded = loadGame(store)!;
     expect(loaded.version).toBe(SAVE_VERSION);
     expect(weekdayName(loaded.day)).toBe('MON');
+    expect(loaded.hasOpened).toBe(true);
     expect(loaded).toMatchObject({ day: 22, balance: 54321, rentBehind: 0, closed: false, reputation: START_REPUTATION, pendingOrders: {}, arrivals: { soda: 12 } });
     expect(loaded.stats.tips).toBe(0);
     expect(WEATHER[loaded.forecast]).toBeDefined();
+  });
+  it('brings a version 5 save up to date, finishing the guide for anyone past day 1', () => {
+    const store = memoryStore();
+    const { hasOpened, ...old } = newGame();
+    store.setItem('extra-life-mart-save', JSON.stringify({ ...old, version: 5, day: 1 }));
+    expect(loadGame(store)).toMatchObject({ version: SAVE_VERSION, day: 1, hasOpened: false });
+    store.setItem('extra-life-mart-save', JSON.stringify({ ...old, version: 5, day: 9, balance: 777 }));
+    expect(loadGame(store)).toMatchObject({ version: SAVE_VERSION, day: 9, balance: 777, hasOpened: true });
   });
   it('ignores corrupt saves and other versions', () => {
     const store = memoryStore();
@@ -888,6 +897,27 @@ describe('first-day guide', () => {
     const s = newGame();
     s.day = 2;
     expect(onboardingStep(s, 'morning')).toBeNull();
+  });
+  it('stays gone after opening, even back on that same morning', () => {
+    const s = newGame();
+    stockShelf(s, SHELF, 'chips', 1);
+    s.hasOpened = true;
+    expect(onboardingStep(s, 'morning')).toBeNull();
+    emptyShelf(s, SHELF);
+    expect(onboardingStep(s, 'morning')).toBeNull();
+  });
+  it('points to the computer when a shelf sells out on the first day', () => {
+    const s = newGame();
+    s.hasOpened = true;
+    expect(onboardingStep(s, 'open', true)).toBe('computer');
+    expect(onboardingStep(s, 'closing', true)).toBe('computer');
+    expect(onboardingStep(s, 'open', false)).toBeNull();
+    expect(onboardingStep(s, 'summary', true)).toBeNull();
+  });
+  it('does not point to the computer after the first day', () => {
+    const s = newGame();
+    s.day = 2;
+    expect(onboardingStep(s, 'open', true)).toBeNull();
   });
   it('does not ask for stock the player does not have', () => {
     const s = newGame();

@@ -15,7 +15,7 @@ A pixel art shop game for phone browsers. Run a little beachfront convenience st
    - To change the order during payment, tap the window to back out.
 3. **Close:** the shop runs from 9 AM to 9 PM, and evening sets in after 6 PM. Check the day's sales, tips, missed sales and profit, then start the next day. Progress saves automatically.
 
-On a new game, an arrow guides you through stocking your first shelf and opening up.
+On a new game, an arrow guides you through stocking your first shelf and opening up, and points you to the computer the first time a shelf sells out that day.
 
 ## Getting ahead
 

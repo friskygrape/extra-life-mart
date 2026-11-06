@@ -41,9 +41,11 @@ export interface GameState {
   /** The store has closed for good: the game is over. */
   closed: boolean;
   totalServed: number;
+  /** The store has opened at least once, so the first-day guide is finished. */
+  hasOpened: boolean;
 }
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export function emptyStats(): DayStats {
   return { revenue: 0, tips: 0, orderSpend: 0, upgradeSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
@@ -73,5 +75,6 @@ export function newGame(): GameState {
     rentBehind: 0,
     closed: false,
     totalServed: 0,
+    hasOpened: false,
   };
 }
