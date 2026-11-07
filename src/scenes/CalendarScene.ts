@@ -6,7 +6,7 @@ import { formatCents } from '../logic/money';
 import { rentDue } from '../logic/rent';
 import { MAX_STARS, stars } from '../logic/reputation';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, closeButton, drawPaper, label } from '../ui';
+import { COLOURS, WIDTH, backdrop, closeButton, drawPaper, label, titleLabel } from '../ui';
 
 const CELL_W = 28;
 const LOOK_AHEAD_DAYS = 14;
@@ -25,7 +25,7 @@ export class CalendarScene extends Phaser.Scene {
     const { state } = session;
     const { day } = state;
 
-    label(this, 6, 4, `WEEK ${weekOf(day)}`, COLOURS.gold);
+    titleLabel(this, 6, 4, `WEEK ${weekOf(day)}`, COLOURS.gold);
     label(this, 6, 14, `${weekdayName(day)}, DAY ${day}`, COLOURS.dim);
     closeButton(this, () => this.close());
 
@@ -50,7 +50,7 @@ export class CalendarScene extends Phaser.Scene {
 
     let y = 114;
     const heading = (text: string) => {
-      label(this, 8, y, text, COLOURS.gold);
+      titleLabel(this, 8, y, text, COLOURS.gold);
       y += 11;
     };
     const line = (text: string, colour: number = COLOURS.white) => {

@@ -5,7 +5,7 @@ import { SHELF_CAPACITY, getProduct } from '../data/products';
 import { emptyShelf, stockShelf } from '../logic/inventory';
 import { unlockedProducts } from '../logic/licences';
 import { session } from '../session';
-import { BUTTONS, COLOURS, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton, secondaryButton } from '../ui';
+import { BUTTONS, COLOURS, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton, secondaryButton, titleLabel } from '../ui';
 
 interface StockData {
   shelfId: string;
@@ -80,7 +80,7 @@ export class StockScene extends Phaser.Scene {
       this.qty = this.maxFor(shelf.productId);
     }
 
-    this.track(label(this, 6, 8, 'SHELF', COLOURS.gold));
+    this.track(titleLabel(this, 6, 8, 'SHELF', COLOURS.gold));
     this.track(closeButton(this, () => this.close()));
 
     const current = shelf.productId ? getProduct(shelf.productId).name : 'EMPTY';
@@ -112,7 +112,7 @@ export class StockScene extends Phaser.Scene {
       if (isSelected) row.setStrokeStyle(1, COLOURS.white);
       if (usable) row.setInteractive({ useHandCursor: true }).on('pointerup', list.guard(() => this.select(product.id), null));
       list.add(this.add.image(16, y + 14, `item_${product.id}`).setScale(ITEM_SCALE).setAlpha(alpha));
-      list.add(label(this, 28, y + 4, product.name).setAlpha(alpha));
+      list.add(titleLabel(this, 28, y + 4, product.name).setAlpha(alpha));
       list.add(label(this, 28, y + 15, `HAVE ${this.have(product.id)}`, isSelected ? COLOURS.white : COLOURS.dim).setAlpha(alpha));
       if (isSelected) list.add(label(this, WIDTH - 12, y + 10, '\u2713', COLOURS.white, 'right'));
     });

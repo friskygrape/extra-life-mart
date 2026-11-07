@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
 import { L } from '../layout';
-import { BIG_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
+import { BIG_STYLE, BIG_TITLE_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, TITLE_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
 
 export const FONT_KEY = 'text';
 export const TINY_FONT_KEY = 'text_tiny';
 export const BIG_FONT_KEY = 'text_big';
+export const TITLE_FONT_KEY = 'text_title';
+export const BIG_TITLE_FONT_KEY = 'text_big_title';
 /** The size to ask for. Each font's real size comes from its style. */
 export const TEXT_SIZE = 1;
 
@@ -23,7 +25,7 @@ export async function loadGameFont(): Promise<void> {
     document.fonts.add(await face.load());
   };
   // The game is still playable without it, so a failure here isn't an error.
-  await Promise.allSettled([load('Bold', MAIN_STYLE.weight), load('Regular', TINY_STYLE.weight)]);
+  await Promise.allSettled([load('Bold', TITLE_STYLE.weight), load('Regular', MAIN_STYLE.weight)]);
 }
 
 /** Draws a font's letters at the screen's own resolution, keeping their smooth edges. */
@@ -87,4 +89,6 @@ export function createGameFont(scene: Phaser.Scene): void {
   buildFont(scene, FONT_KEY, MAIN_STYLE, TEXT_SIZE);
   buildFont(scene, TINY_FONT_KEY, TINY_STYLE, TEXT_SIZE);
   buildFont(scene, BIG_FONT_KEY, BIG_STYLE, TEXT_SIZE);
+  buildFont(scene, TITLE_FONT_KEY, TITLE_STYLE, TEXT_SIZE);
+  buildFont(scene, BIG_TITLE_FONT_KEY, BIG_TITLE_STYLE, TEXT_SIZE);
 }

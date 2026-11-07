@@ -3,7 +3,7 @@ import { sfx } from '../audio';
 import { weekOf } from '../logic/calendar';
 import { formatCents } from '../logic/money';
 import { session } from '../session';
-import { bigLabel, COLOURS, WIDTH, backdrop, drawPaper, label, mainButton } from '../ui';
+import { bigTitle, COLOURS, WIDTH, backdrop, drawPaper, label, mainButton } from '../ui';
 
 const PAPER_X = 14;
 const PAPER_W = WIDTH - PAPER_X * 2;
@@ -24,7 +24,7 @@ export class GameOverScene extends Phaser.Scene {
     const top = 44;
     drawPaper(this.add.graphics(), PAPER_X, top, PAPER_W, 208, true);
 
-    bigLabel(this, centre, top + 14, 'STORE CLOSED', INK_BAD, 'center');
+    bigTitle(this, centre, top + 14, 'STORE CLOSED', INK_BAD, 'center');
     const said = label(this, centre, top + 40, 'THE RENT WENT UNPAID TWO WEEKS IN A ROW, AND THE LANDLORD TOOK BACK THE KEYS.', INK_MUTED, 'center');
     said.setMaxWidth(PAPER_W - 16);
 

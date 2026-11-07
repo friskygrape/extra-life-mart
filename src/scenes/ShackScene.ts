@@ -22,7 +22,7 @@ import { customerTender, formatCents } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
 import { session } from '../session';
-import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel } from '../ui';
+import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel, titleLabel } from '../ui';
 
 const TABLE_CAPACITY = 4;
 const DELIVERY_SECONDS = 3;
@@ -979,8 +979,8 @@ export class ShackScene extends Phaser.Scene {
     this.speechTail.setVisible(false);
     if (!visible) return;
 
-    const put = (y: number, text: string, colour: number) => {
-      const t = label(this, bubbleX() + BUBBLE_PAD, y, text, colour).setDepth(6);
+    const put = (y: number, text: string, colour: number, write = label) => {
+      const t = write(this, bubbleX() + BUBBLE_PAD, y, text, colour).setDepth(6);
       t.setMaxWidth(bubbleW() - BUBBLE_PAD * 2);
       this.bubbleLines.push(t);
       return t;
@@ -994,7 +994,7 @@ export class ShackScene extends Phaser.Scene {
     // First they say hello, with their name at the top
     if (customer.greeting !== null) {
       const top = bubbleY();
-      put(top + 4, customer.name, NAME_INK);
+      put(top + 4, customer.name, NAME_INK, titleLabel);
       const said = put(top + 15, customer.greeting, COLOURS.ink);
       place(this.speech, this.speechTail, top, top + 15 + said.height + 3, top + 12);
       return;
@@ -1004,7 +1004,7 @@ export class ShackScene extends Phaser.Scene {
     const listTop = hasList ? this.listBubbleTop(requestLines(customer.wants, session.table).length + (this.readyToPay ? 1 : 0)) : bubbleY();
     let y = this.receiptLines === null ? listTop + 4 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 11;
     if (hasList) {
-      put(y, customer.name, NAME_INK);
+      put(y, customer.name, NAME_INK, titleLabel);
       const ruleY = y + 8;
       y += 11;
       requestLines(customer.wants, session.table).forEach((line) => {

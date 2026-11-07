@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BIG_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY } from './art/font';
+import { BIG_FONT_KEY, BIG_TITLE_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY, TITLE_FONT_KEY } from './art/font';
 import { sfx } from './audio';
 import { ACTION_H, L } from './layout';
 
@@ -44,6 +44,16 @@ export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: strin
 /** The same as label, at double size. */
 export function bigLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
   return textIn(BIG_FONT_KEY, scene, x, y, text, color, align);
+}
+
+/** The same as label, in bold: for titles and names. */
+export function titleLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  return textIn(TITLE_FONT_KEY, scene, x, y, text, color, align);
+}
+
+/** The same as titleLabel, at double size. */
+export function bigTitle(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  return textIn(BIG_TITLE_FONT_KEY, scene, x, y, text, color, align);
 }
 
 export interface Button {

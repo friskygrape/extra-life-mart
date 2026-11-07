@@ -8,7 +8,7 @@ import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, unlockedProducts
 import { formatCents } from '../logic/money';
 import { cartCost, placeOrder, rushCost, type Cart } from '../logic/orders';
 import { session } from '../session';
-import { BUTTONS, COLOURS, LARGE_W, LARGE_X, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton, secondaryButton, tinyLabel } from '../ui';
+import { BUTTONS, COLOURS, LARGE_W, LARGE_X, ScrollList, WIDTH, backdrop, button, closeButton, label, mainButton, secondaryButton, tinyLabel, titleLabel } from '../ui';
 
 import type { CelebrationData } from './CelebrationScene';
 
@@ -93,7 +93,7 @@ export class ComputerScene extends Phaser.Scene {
     this.content.forEach((o) => o.destroy());
     this.content = [];
 
-    this.track(label(this, 6, 4, TITLES[this.page], COLOURS.gold));
+    this.track(titleLabel(this, 6, 4, TITLES[this.page], COLOURS.gold));
     this.track(label(this, 6, 15, formatCents(session.state.balance), COLOURS.dim));
     this.track(closeButton(this, () => this.backOrClose(), this.page === 'menu' ? 'CLOSE' : 'BACK'));
 
@@ -107,8 +107,8 @@ export class ComputerScene extends Phaser.Scene {
   private renderMenu() {
     MENU.forEach(({ page, text, note }, i) => {
       const y = MENU_Y + i * (MENU_H + MENU_GAP);
-      const choice = this.track(button(this, LARGE_X, y, LARGE_W, MENU_H, text, () => this.go(page)));
-      choice.text.setY(y + 17);
+      this.track(button(this, LARGE_X, y, LARGE_W, MENU_H, '', () => this.go(page)));
+      this.track(titleLabel(this, WIDTH / 2, y + 17, text, COLOURS.white, 'center'));
       this.track(tinyLabel(this, WIDTH / 2, y + 31, note, COLOURS.dim, 'center'));
     });
   }
@@ -130,7 +130,7 @@ export class ComputerScene extends Phaser.Scene {
       const coming = (state.pendingOrders[product.id] ?? 0) + (state.arrivals[product.id] ?? 0);
       list.add(this.add.rectangle(4, y, WIDTH - 8, INVENTORY_ROW_H - 2, COLOURS.panel).setOrigin(0));
       list.add(this.add.image(16, y + 14, `item_${product.id}`).setScale(ITEM_SCALE));
-      list.add(label(this, 28, y + 3, product.name, count > 0 ? COLOURS.white : COLOURS.dim));
+      list.add(titleLabel(this, 28, y + 3, product.name, count > 0 ? COLOURS.white : COLOURS.dim));
       list.add(tinyLabel(this, 28, y + 16, coming > 0 ? `ON SHELVES ${onShelves}  COMING ${coming}` : `ON SHELVES ${onShelves}`, COLOURS.dim));
       list.add(label(this, WIDTH - 12, y + 10, String(count), count > 0 ? COLOURS.gold : COLOURS.dim, 'right'));
     });
@@ -152,7 +152,7 @@ export class ComputerScene extends Phaser.Scene {
     const have = session.state.stockroom[product.id] ?? 0;
     const coming = (session.state.pendingOrders[product.id] ?? 0) + (session.state.arrivals[product.id] ?? 0);
     list.add(this.add.image(12, y + 17, `item_${product.id}`).setScale(ITEM_SCALE));
-    list.add(label(this, 24, y + 2, product.name));
+    list.add(titleLabel(this, 24, y + 2, product.name));
     list.add(tinyLabel(this, 24, y + 13, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, COLOURS.gold));
     list.add(tinyLabel(this, 24, y + 23, coming > 0 ? `HAVE ${have} COMING ${coming}` : `SELL ${formatCents(product.retail)} HAVE ${have}`, COLOURS.dim));
     list.addButton(button(this, 132, y + 2, BUTTONS.stepper, BUTTONS.stepper, '-', list.guard(() => this.change(product.id, -BOX_SIZE)), COLOURS.button, null)).setEnabled(boxes > 0);
@@ -208,7 +208,7 @@ export class ComputerScene extends Phaser.Scene {
     const { state } = session;
     const price = product.licence!;
     list.add(this.add.image(12, y + 17, `item_${product.id}`).setScale(ITEM_SCALE));
-    list.add(label(this, 24, y + 6, product.name));
+    list.add(titleLabel(this, 24, y + 6, product.name));
     list.add(tinyLabel(this, 24, y + 18, `SELLS FOR ${formatCents(product.retail)}`, COLOURS.dim));
     list.addButton(button(this, WIDTH - BUTTONS.rowW - 6, y + 2, BUTTONS.rowW, BUTTONS.rowH, formatCents(price), list.guard(() => {
       if (!buyLicence(state, product.id)) return;
@@ -225,7 +225,7 @@ export class ComputerScene extends Phaser.Scene {
     SHELF_ROW_PRICES.forEach((price, i) => {
       const y = LIST_Y + i * ROW_H;
       const rowNumber = i + 2;
-      this.track(label(this, 8, y + 6, `REPAIR SHELF ROW ${rowNumber}`));
+      this.track(titleLabel(this, 8, y + 6, `REPAIR SHELF ROW ${rowNumber}`));
       this.track(tinyLabel(this, 8, y + 18, 'ROOM FOR 4 MORE SNACKS', COLOURS.green));
       if (state.rowsOwned >= rowNumber) {
         this.track(label(this, WIDTH - 4 - BUTTONS.rowW / 2, y + 12, 'DONE', COLOURS.dim, 'center'));
@@ -245,7 +245,7 @@ export class ComputerScene extends Phaser.Scene {
     COMING_SOON.forEach(({ name, icon }, i) => {
       const y = soonY + i * ROW_H;
       this.track(this.add.image(16, y + 16, icon).setAlpha(0.55));
-      this.track(label(this, 30, y + 6, name, COLOURS.dim));
+      this.track(titleLabel(this, 30, y + 6, name, COLOURS.dim));
       this.track(tinyLabel(this, 30, y + 18, 'COMING SOON', COLOURS.gold));
     });
   }

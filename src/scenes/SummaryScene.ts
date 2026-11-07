@@ -6,7 +6,7 @@ import { lockedProducts } from '../logic/licences';
 import { rentDue } from '../logic/rent';
 import { formatCents } from '../logic/money';
 import { session } from '../session';
-import { COLOURS, WIDTH, backdrop, drawPaper, label, mainButton } from '../ui';
+import { COLOURS, WIDTH, backdrop, drawPaper, label, mainButton, titleLabel } from '../ui';
 
 const PAPER_X = 14;
 const PAPER_W = WIDTH - PAPER_X * 2;
@@ -35,7 +35,7 @@ export class SummaryScene extends Phaser.Scene {
     // The paper, with a torn edge along the bottom
     drawPaper(this.add.graphics(), PAPER_X, top, PAPER_W, paperH, true, COLOURS.ink);
 
-    label(this, centre, top + 6, 'EXTRA LIFE MART', COLOURS.ink, 'center');
+    titleLabel(this, centre, top + 6, 'EXTRA LIFE MART', COLOURS.ink, 'center');
     label(this, centre, top + 16, `${weekdayName(summary.day)} DAY ${summary.day} RECEIPT`, INK_MUTED, 'center');
     let y = top + 27;
     const rule = () => {

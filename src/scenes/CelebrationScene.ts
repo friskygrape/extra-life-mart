@@ -3,7 +3,7 @@ import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
 import { formatCents } from '../logic/money';
-import { bigLabel, COLOURS, WIDTH, HEIGHT, backdrop, drawPaper, label, mainButton } from '../ui';
+import { bigTitle, COLOURS, WIDTH, HEIGHT, backdrop, drawPaper, label, mainButton, titleLabel } from '../ui';
 
 export type CelebrationData = { kind: 'licence'; productId: string } | { kind: 'shelves'; row: number };
 
@@ -47,12 +47,12 @@ export class CelebrationScene extends Phaser.Scene {
       const product = getProduct(data.productId);
       heading(10, 'LICENCE GRANTED', INK_MUTED);
       card.add(this.add.image(0, -8, `item_${product.id}`).setScale(ITEM_SCALE * 4));
-      heading(114, product.name, COLOURS.ink);
+      card.add(titleLabel(this, 0, 114 - PAPER_H / 2, product.name, COLOURS.ink, 'center'));
       heading(128, `+${formatCents(product.retail - product.wholesale)} A SALE`, INK_GOOD);
     } else {
       heading(10, 'SHELVES REPAIRED!', INK_MUTED);
       card.add(this.add.image(0, -8, 'new_shelf').setScale(2));
-      heading(114, `SHELF ROW ${data.row}`, COLOURS.ink);
+      card.add(titleLabel(this, 0, 114 - PAPER_H / 2, `SHELF ROW ${data.row}`, COLOURS.ink, 'center'));
       heading(128, 'ROOM FOR 4 MORE SNACKS', INK_GOOD);
     }
 
@@ -61,7 +61,7 @@ export class CelebrationScene extends Phaser.Scene {
     this.tweens.add({ targets: card, scale: 1, duration: 420, ease: 'Back.easeOut' });
 
     this.throwConfetti();
-    bigLabel(this, cx, PAPER_Y - 22, data.kind === 'licence' ? 'UNLOCKED!' : 'REPAIRED!', COLOURS.gold, 'center').setDepth(5);
+    bigTitle(this, cx, PAPER_Y - 22, data.kind === 'licence' ? 'UNLOCKED!' : 'REPAIRED!', COLOURS.gold, 'center').setDepth(5);
 
     const done = mainButton(this, PAPER_Y + PAPER_H + 24, 'NICE!', () => this.close(), sfx.click);
     done.rect.setDepth(5);
