@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { drawerMoneySizes } from '../art/textures';
+import { textWidth } from '../art/fontMetrics';
+import { TERMINAL_DIGITS, drawerMoneySizes } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
 import { L, PAYMENT_PANEL_H, bubbleW, bubbleX, receiptHeight } from '../layout';
@@ -7,7 +8,7 @@ import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
 import { settleService } from '../logic/reputation';
 import { session } from '../session';
-import { BUTTONS, COLOURS, button, drawPaper, label } from '../ui';
+import { BUTTONS, COLOURS, button, drawPaper, label, tinyLabel } from '../ui';
 
 interface RegisterData {
   items: string[];
@@ -123,6 +124,10 @@ export class RegisterScene extends Phaser.Scene {
     const x = Math.min(bubbleX(), L.W - 3 - w);
     const y = this.info.receiptTop;
     const lines = items.slice(0, MAX_RECEIPT_LINES);
+    // The till feeds out its paper in step with the receipt on screen.
+    const totalSteps = lines.length + (cash ? 3 : 1);
+    let stepsDone = 0;
+    const feed = () => session.events.emit('receipt-feed', ++stepsDone / totalSteps);
     const paper = this.add.graphics();
     drawPaper(paper, x, y, w, 5, false);
 
@@ -140,8 +145,9 @@ export class RegisterScene extends Phaser.Scene {
       at(i * PRINT_LINE_MS, () => {
         const p = getProduct(id);
         const price = formatCents(p.retail);
-        const fits = (p.name.length + price.length + 1) * 6 <= w - 6;
+        const fits = textWidth(p.name) + textWidth(price) + 4 <= w - 6;
         sfx.keypad();
+        feed();
         drawPaper(paper, x, y, w, 5 + (i + 1) * 9, false);
         label(this, x + 3, y + 3 + i * 9, fits ? p.name : p.short, COLOURS.ink);
         label(this, x + w - 3, y + 3 + i * 9, price, COLOURS.ink, 'right');
@@ -154,6 +160,7 @@ export class RegisterScene extends Phaser.Scene {
 
     if (cash) {
       at(time, () => {
+        feed();
         drawPaper(paper, x, y, w, ruleY - y + 13, false);
         this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
         row(ruleY + 3, 'CASH TOTAL', formatCents(this.total));
@@ -163,12 +170,14 @@ export class RegisterScene extends Phaser.Scene {
       time += NEXT_LINE_MS;
       at(time, () => {
         sfx.keypad();
+        feed();
         drawPaper(paper, x, y, w, ruleY - y + 22, false);
         row(ruleY + 12, 'AMOUNT PAID', formatCents(this.tendered));
       });
       time += NEXT_LINE_MS;
       at(time, () => {
         sfx.coin();
+        feed();
         drawPaper(paper, x, y, w, finalHeight, true);
         this.add.rectangle(x + 3, ruleY + 21, w - 6, 1, COLOURS.ink).setOrigin(0);
         this.highlightRow(x, ruleY + 23, w, ['CHANGE', 'DUE'], formatCents(this.tendered - this.total));
@@ -176,6 +185,7 @@ export class RegisterScene extends Phaser.Scene {
     } else {
       at(time, () => {
         sfx.coin();
+        feed();
         drawPaper(paper, x, y, w, finalHeight, true);
         this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
         this.highlightRow(x, ruleY + 2, w, ['TOTAL'], formatCents(this.total));
@@ -439,7 +449,8 @@ export class RegisterScene extends Phaser.Scene {
     // Tapping the terminal itself shouldn't count as tapping outside.
     const body = this.add.image(0, 0, 'terminal').setInteractive();
     this.displayText = label(this, 17, -22, '$0.00', TERMINAL_INK, 'right');
-    const terminal = this.add.container(x, restY + 70, [body, this.displayText]).setDepth(-1);
+    const digits = TERMINAL_DIGITS.map(({ text, x: keyX, y: keyY }) => tinyLabel(this, keyX - body.width / 2, keyY - body.height / 2, text, TERMINAL_INK));
+    const terminal = this.add.container(x, restY + 70, [body, this.displayText, ...digits]).setDepth(-1);
     this.terminal = terminal;
     sfx.pop();
     this.tweens.add({ targets: terminal, y: restY, duration: 280, ease: 'Back.easeOut' });

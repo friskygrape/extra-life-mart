@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createPixelFont } from '../art/font';
+import { createGameFont, loadGameFont } from '../art/font';
 import { CUSTOMER_LOOKS, createTextures } from '../art/textures';
 
 export class BootScene extends Phaser.Scene {
@@ -16,8 +16,10 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    createPixelFont(this);
-    createTextures(this);
-    this.scene.start('Shack');
+    void loadGameFont().then(() => {
+      createGameFont(this);
+      createTextures(this);
+      this.scene.start('Shack');
+    });
   }
 }

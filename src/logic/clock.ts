@@ -8,9 +8,9 @@ export function hourOfDay(fraction: number): number {
   return OPEN_HOUR + Math.min(1, Math.max(0, fraction)) * (CLOSE_HOUR - OPEN_HOUR);
 }
 
-/** A 12-hour clock in steps of 10 minutes, such as 9:00 AM or 12:30 PM. */
+/** A 12-hour clock to the minute, such as 9:00 AM or 12:37 PM. */
 export function clockLabel(fraction: number): string {
-  const minutes = Math.floor((hourOfDay(fraction) * 60) / 10) * 10;
+  const minutes = Math.floor(hourOfDay(fraction) * 60);
   const hour24 = Math.floor(minutes / 60);
   const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
   return `${hour12}:${String(minutes % 60).padStart(2, '0')} ${hour24 < 12 ? 'AM' : 'PM'}`;

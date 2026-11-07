@@ -39,7 +39,7 @@ export function label(
   return t;
 }
 
-/** The same as label, in the small 3x5 font. */
+/** The same as label, in the small size. */
 export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
   const t = scene.add.bitmapText(x, y, TINY_FONT_KEY, text.toUpperCase(), TINY_FONT_SIZE);
   t.setTint(color);
@@ -112,8 +112,6 @@ export const BUTTONS = {
   closeW: 46,
   removeW: 58,
   tabH: 24,
-  stripW: 78,
-  stripH: 26,
   actionH: ACTION_H,
 };
 
@@ -129,8 +127,8 @@ export function secondaryButton(scene: Phaser.Scene, y: number, text: string, on
   return button(scene, LARGE_X, y, LARGE_W, BUTTONS.largeH, text, onTap, COLOURS.panel);
 }
 
-export function closeButton(scene: Phaser.Scene, onTap: () => void) {
-  return button(scene, WIDTH - BUTTONS.closeW - 4, 3, BUTTONS.closeW, BUTTONS.compactH, 'CLOSE', onTap);
+export function closeButton(scene: Phaser.Scene, onTap: () => void, text = 'CLOSE') {
+  return button(scene, WIDTH - BUTTONS.closeW - 4, 3, BUTTONS.closeW, BUTTONS.compactH, text, onTap);
 }
 
 /**
@@ -260,11 +258,12 @@ export function drawPaper(g: Phaser.GameObjects.Graphics, x: number, y: number, 
 /** How far text sits in from the edge of a framed bubble. */
 export const BUBBLE_PAD = 5;
 
-/** A speech bubble: parchment in a teal frame, with folded corners and an optional rule under the name. */
+/** A speech bubble: beige paper in an orange frame, with folded corners and an optional rule under the name. */
 export function drawBubble(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, ruleY: number | null) {
-  const ink = 0x1b1d28;
-  const frame = 0x2a8f92;
-  const frameLight = 0x7adccd;
+  const ink = 0x5c3418;
+  const frame = 0xee9a62;
+  const frameLight = 0xf9bb88;
+  const rule = 0xc97440;
   const paper = 0xf7ebcf;
   const fold = 0xdcc8a0;
   const foldShade = 0xbda67c;
@@ -281,7 +280,7 @@ export function drawBubble(g: Phaser.GameObjects.Graphics, x: number, y: number,
   }
   // A smaller curl at the bottom right
   g.fillStyle(fold).fillRect(x + w - 6, y + h - 4, 3, 1).fillRect(x + w - 5, y + h - 5, 2, 1).fillRect(x + w - 4, y + h - 6, 1, 1);
-  if (ruleY !== null) g.fillStyle(frame).fillRect(x + BUBBLE_PAD, ruleY, w - BUBBLE_PAD * 2 - 6, 1);
+  if (ruleY !== null) g.fillStyle(rule).fillRect(x + BUBBLE_PAD, ruleY, w - BUBBLE_PAD * 2 - 6, 1);
 }
 
 /**

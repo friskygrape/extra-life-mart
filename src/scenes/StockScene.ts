@@ -127,7 +127,7 @@ export class StockScene extends Phaser.Scene {
     this.track(mainButton(this, footerY + 36, 'PLACE ON SHELF', () => this.place())).setEnabled(this.selected !== null && this.qty > 0);
     this.track(secondaryButton(this, footerY + 72, 'ORDER MORE STOCK', () => {
       this.scene.stop();
-      this.scene.launch('Order');
+      this.scene.launch('Computer', { page: 'order' });
     }));
   }
 

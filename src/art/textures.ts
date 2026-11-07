@@ -1,11 +1,9 @@
 import Phaser from 'phaser';
 import { L, drawerLayout } from '../layout';
-import { CHAR_W, GLYPHS, TINY_GLYPHS } from './font';
 
 type Ctx = CanvasRenderingContext2D;
 
 export { CUSTOMER_LOOKS } from './looks';
-const COLOUR_STRIP = '#1b3346';
 
 const rect = (c: Ctx, color: string, x: number, y: number, w = 1, h = 1) => {
   c.fillStyle = color;
@@ -76,17 +74,16 @@ const PANEL = '#70bfaa';
 const PANEL_SHADE = '#5bb6ad';
 const PANEL_SEAM = '#35918c';
 const PANEL_LIGHT = '#94dcc8';
-const FRAME = '#47a1a1';
-const FRAME_LIGHT = '#72bea9';
-const FRAME_DARK = '#236067';
+const STEEL = '#9aa3a8';
+const STEEL_LIGHT = '#c6cdd0';
+const STEEL_DARK = '#4d555b';
 const CREAM = '#efd4b6';
 const CREAM_LIGHT = '#f6e4ca';
 const CREAM_SHADE = '#ddb68b';
 const CREAM_EDGE = '#a8845c';
 const BUBBLE_PAPER = '#f7ebcf';
-const SHUTTER = '#6f94a2';
-const SHUTTER_LIGHT = '#8cadb8';
-const SHUTTER_DARK = '#4f7485';
+const BUBBLE_FRAME = '#ee9a62';
+const BUBBLE_EDGE = '#5c3418';
 
 /** Vertical wall panels. */
 function drawPanels(c: Ctx, x: number, y: number, w: number, h: number) {
@@ -96,16 +93,6 @@ function drawPanels(c: Ctx, x: number, y: number, w: number, h: number) {
     rect(c, PANEL_SEAM, x + px, y, 1, h);
     rect(c, PANEL_LIGHT, x + px + 1, y, 1, h);
   }
-}
-
-/** Grey-blue roller shutter slats, used for locked shelves. */
-function drawSlats(c: Ctx, rng: () => number, x: number, y: number, w: number, h: number) {
-  rect(c, SHUTTER, x, y, w, h);
-  for (let sy = 0; sy < h; sy += 6) {
-    rect(c, SHUTTER_LIGHT, x, y + sy, w, 1);
-    rect(c, SHUTTER_DARK, x, y + sy + 5, w, 1);
-  }
-  speckle(c, rng, x, y, w, h, ['#5f8494', '#9dbac2', '#84a2ad'], 0.05);
 }
 
 /** Height of the name plate along the bottom of each shelf, including the gap under it. */
@@ -127,7 +114,7 @@ function drawShelfCubby(c: Ctx, x: number, y: number, w: number, h: number) {
   const n = nicheBounds(w, h);
   const niche = n.floor + 4 - n.top;
   // Dark frame, rounded at the corners
-  rounded(c, FRAME_DARK, x + 1, y + 1, w - 2, niche + 2);
+  rounded(c, STEEL_DARK, x + 1, y + 1, w - 2, niche + 2);
   // Side walls
   rect(c, '#f1bf92', x + n.left, y + n.top, n.width, niche);
   // Back wall, dimmed while the light is off
@@ -144,10 +131,10 @@ function drawShelfCubby(c: Ctx, x: number, y: number, w: number, h: number) {
   for (let i = 0; i < 8; i++) rect(c, '#f9e6b7', x + n.backLeft - i * 0.6, y + n.floor + i * 0.5, n.backWidth + i * 1.2, 0.5);
   // Name plate
   const plateY = y + h - SHELF_LABEL_H;
-  rounded(c, FRAME_DARK, x + 1, plateY, w - 2, 11);
-  rect(c, FRAME_LIGHT, x + 2, plateY + 0.5, w - 4, 1);
+  rounded(c, STEEL_DARK, x + 1, plateY, w - 2, 11);
+  rect(c, STEEL_LIGHT, x + 2, plateY + 0.5, w - 4, 1);
   rect(c, '#fbeed5', x + 2, plateY + 1.5, w - 4, 8);
-  rect(c, FRAME, x + 2, plateY + 9.5, w - 4, 0.5);
+  rect(c, STEEL, x + 2, plateY + 9.5, w - 4, 0.5);
 }
 
 /** Left edge of a shelf column, so four columns always span the full width. */
@@ -181,10 +168,48 @@ function drawShelfGlow(scene: Phaser.Scene, w: number, h: number) {
   });
 }
 
+/** A shelf waiting to be repaired: dark and cracked, with its board sagging and its lamp dead. */
+function drawBrokenCubby(c: Ctx, x: number, w: number, h: number, seed: number) {
+  const rng = seeded(90 + seed);
+  const n = nicheBounds(w, h);
+  const niche = n.floor + 4 - n.top;
+  rounded(c, '#30373c', x + 1, 1, w - 2, niche + 2);
+  rect(c, '#5d554c', x + n.left, n.top, n.width, niche);
+  rect(c, '#3b342e', x + n.backLeft, n.backTop, n.backWidth, n.floor - n.backTop);
+  for (let i = 0; i < n.ceiling * 2; i++) rect(c, '#4a433b', x + n.left + i * 0.42, n.top + i * 0.5, n.width - i * 0.84, 0.5);
+  // A crack wandering down the back wall
+  let crackX = x + n.backLeft + 6 + rng() * (n.backWidth - 12);
+  for (let cy = n.backTop; cy < n.floor; cy += 2) {
+    rect(c, '#1f1a16', crackX, cy, 1, 2);
+    crackX += Math.round(rng() * 2 - 1);
+  }
+  // A dead lamp, hanging by one end
+  rect(c, '#2a2826', x + Math.floor(w / 2) - 6, n.top + 0.5, 3, 2);
+  for (let i = 0; i < 12; i++) rect(c, '#6e6a62', x + Math.floor(w / 2) - 6 + i, n.top + 1.5 + i * 0.5, 1, 1.5);
+  // The board, dropped at one end
+  const low = seed % 2 === 0;
+  for (let i = 0; i < n.backWidth + 4; i++) {
+    const drop = (low ? i : n.backWidth + 4 - i) * 0.16;
+    rect(c, '#8b7d68', x + n.backLeft - 2 + i, n.floor - 4 + drop, 1, 1.5);
+    rect(c, '#524839', x + n.backLeft - 2 + i, n.floor - 2.5 + drop, 1, 1);
+  }
+  // A blank, grubby name plate
+  const plateY = h - SHELF_LABEL_H;
+  rounded(c, '#30373c', x + 1, plateY, w - 2, 11);
+  rect(c, '#6b7378', x + 2, plateY + 0.5, w - 4, 1);
+  rect(c, '#8e897e', x + 2, plateY + 1.5, w - 4, 8);
+  speckle(c, rng, x + 2, plateY + 1.5, w - 4, 8, ['#76716a', '#a19c90'], 0.12);
+}
+
 /** How far each door swings. These are their widths once open, in game pixels. */
 const DOOR_OPEN_LEFT = 10;
 const DOOR_OPEN_RIGHT = 34;
 export const DOOR_FRAMES = 8;
+export const CLOSED_SIGN_W = 78;
+export const CLOSED_SIGN_H = 36;
+export const BROKEN_TAPE_H = 11;
+export const REGISTER_DISPLAY_W = 38;
+export const REGISTER_DISPLAY_H = 13;
 
 /** One glass door at one point in its swing. Hinged at its outer edge, with the free edge moving away from you. */
 function drawDoor(c: Ctx, w: number, h: number, openWidth: number, t: number, hingeOnLeft: boolean) {
@@ -204,30 +229,30 @@ function drawDoor(c: Ctx, w: number, h: number, openWidth: number, t: number, hi
       c.fillRect(px, y0, 1, Math.max(0, y1 - y0));
     };
     if (edge) {
-      fill(FRAME_DARK, top, bottom);
+      fill(STEEL_DARK, top, bottom);
       continue;
     }
     if (isStile) {
       const light = i === 1 || i === across - stile;
-      fill(light ? FRAME_LIGHT : FRAME, top, bottom);
-      fill(FRAME_DARK, top, top + 1);
-      fill(FRAME_DARK, bottom - 1, bottom);
+      fill(light ? STEEL_LIGHT : STEEL, top, bottom);
+      fill(STEEL_DARK, top, top + 1);
+      fill(STEEL_DARK, bottom - 1, bottom);
       continue;
     }
     const railTop = top + 10;
     const railBottom = bottom - 22;
-    fill(FRAME_DARK, top, top + 1);
-    fill(FRAME_LIGHT, top + 1, top + 3);
-    fill(FRAME, top + 3, railTop - 1);
-    fill(FRAME_DARK, railTop - 1, railTop);
+    fill(STEEL_DARK, top, top + 1);
+    fill(STEEL_LIGHT, top + 1, top + 3);
+    fill(STEEL, top + 3, railTop - 1);
+    fill(STEEL_DARK, railTop - 1, railTop);
     // Glass, with a soft diagonal reflection
     fill('rgba(205, 238, 236, 0.28)', railTop, railBottom);
     const band = (i * 2 + 40) % 150;
     if (band < 34) fill('rgba(255, 255, 255, 0.22)', railTop + 8 + band, railBottom - 40);
-    fill(FRAME_DARK, railBottom, railBottom + 1);
-    fill(FRAME, railBottom + 1, bottom - 2);
-    fill(FRAME_LIGHT, railBottom + 1, railBottom + 2);
-    fill(FRAME_DARK, bottom - 2, bottom);
+    fill(STEEL_DARK, railBottom, railBottom + 1);
+    fill(STEEL, railBottom + 1, bottom - 2);
+    fill(STEEL_LIGHT, railBottom + 1, railBottom + 2);
+    fill(STEEL_DARK, bottom - 2, bottom);
   }
   // Long handle near the free edge
   const handleAt = across - stile - 5;
@@ -235,7 +260,7 @@ function drawDoor(c: Ctx, w: number, h: number, openWidth: number, t: number, hi
     const u = handleAt / (across - 1);
     const px = hingeOnLeft ? handleAt : totalW - 4 - handleAt;
     const mid = (Math.round(u * t * 44) + totalH - Math.round(u * t * 16)) / 2;
-    c.fillStyle = FRAME_DARK;
+    c.fillStyle = STEEL_DARK;
     c.fillRect(px - 1, mid - 26, 5, 52);
     c.fillStyle = '#d8dee0';
     c.fillRect(px, mid - 25, 3, 50);
@@ -266,20 +291,20 @@ function drawShop(scene: Phaser.Scene) {
     rect(c, CREAM_LIGHT, outerLeft, frameTop, outerW, 2);
     rect(c, CREAM, outerLeft, frameTop + 2, outerW, lintel - 3);
     rect(c, CREAM_SHADE, outerLeft, frameTop + lintel - 1, outerW, 3);
-    rect(c, FRAME_DARK, x - inner - 0.5, y - inner, w + inner * 2 + 1, h + inner);
-    rect(c, FRAME, x - inner, y - inner + 0.5, w + inner * 2, h + inner);
-    rect(c, FRAME_LIGHT, x - inner + 1, y - inner + 0.5, w + inner * 2 - 2, 1);
-    rect(c, FRAME_LIGHT, x - inner + 1, y - inner + 1, 1, h + inner);
-    rect(c, FRAME_LIGHT, x + w + 2, y - inner + 1, 1, h + inner);
-    rect(c, FRAME_DARK, x - 1, y - 1, 1, h + 1);
-    rect(c, FRAME_DARK, x + w, y - 1, 1, h + 1);
-    rect(c, FRAME_DARK, x - 1, y - 1, w + 2, 1);
+    rect(c, STEEL_DARK, x - inner - 0.5, y - inner, w + inner * 2 + 1, h + inner);
+    rect(c, STEEL, x - inner, y - inner + 0.5, w + inner * 2, h + inner);
+    rect(c, STEEL_LIGHT, x - inner + 1, y - inner + 0.5, w + inner * 2 - 2, 1);
+    rect(c, STEEL_LIGHT, x - inner + 1, y - inner + 1, 1, h + inner);
+    rect(c, STEEL_LIGHT, x + w + 2, y - inner + 1, 1, h + inner);
+    rect(c, STEEL_DARK, x - 1, y - 1, 1, h + 1);
+    rect(c, STEEL_DARK, x + w, y - 1, 1, h + 1);
+    rect(c, STEEL_DARK, x - 1, y - 1, w + 2, 1);
     c.clearRect(x, y, w, h);
 
     // Sill along the bottom of the opening
-    rect(c, FRAME_DARK, x - inner - 0.5, L.counterTop - 4, w + inner * 2 + 1, 1);
-    rect(c, '#62c0b0', x - inner, L.counterTop - 3, w + inner * 2, 2);
-    rect(c, FRAME, x - inner, L.counterTop - 1, w + inner * 2, 1);
+    rect(c, STEEL_DARK, x - inner - 0.5, L.counterTop - 4, w + inner * 2 + 1, 1);
+    rect(c, STEEL_LIGHT, x - inner, L.counterTop - 3, w + inner * 2, 2);
+    rect(c, STEEL, x - inner, L.counterTop - 1, w + inner * 2, 1);
 
     // The straps the calendar hangs from
     [7, 27].forEach((sx) => {
@@ -296,7 +321,7 @@ function drawShop(scene: Phaser.Scene) {
     rect(c, '#e3c79a', 0, top + 2, W, 2);
     rect(c, '#efdcb4', 0, bottom - 6, W, 2);
     rect(c, '#a98a5c', 0, bottom - 4, W, 2);
-    rect(c, FRAME_DARK, 0, bottom - 2, W, 3);
+    rect(c, '#5c4426', 0, bottom - 2, W, 3);
 
     // The register's shadow on the counter
     rect(c, COUNTER_SHADOW, 2, bottom - 6, 74, 1.5);
@@ -310,9 +335,8 @@ function drawShop(scene: Phaser.Scene) {
       }
     }
 
-    // Controls strip
-    rect(c, COLOUR_STRIP, 0, L.stripTop, W, H - L.stripTop);
-    rect(c, '#356482', 0, L.stripTop, W, 1);
+    // Below the shelves, clear of the phone's gesture bar
+    rect(c, PANEL_SEAM, 0, L.H - L.safeBottom, W, L.safeBottom);
   });
   for (let col = 0; col < 4; col++) drawShelfGlow(scene, columnX(col + 1) - columnX(col), L.rowH);
 
@@ -347,74 +371,64 @@ function drawShop(scene: Phaser.Scene) {
     rightTex.refresh();
   }
 
-  // The sign that hangs on the closed doors
-  canvasTexture(scene, 'closed_sign', 64, 30, (c) => {
-    rect(c, '#2d3036', 7, 0, 1, 9);
-    rect(c, '#2d3036', 56, 0, 1, 9);
-    rounded(c, INK, 0, 8, 64, 22);
-    rounded(c, FRAME, 1, 9, 62, 20);
-    rounded(c, CREAM_LIGHT, 3, 11, 58, 16);
+  // The wooden sign that hangs on the closed doors
+  canvasTexture(scene, 'closed_sign', CLOSED_SIGN_W, CLOSED_SIGN_H, (c) => {
+    const w = CLOSED_SIGN_W;
+    const h = CLOSED_SIGN_H;
+    [8, w - 9].forEach((cx) => rect(c, '#2d3036', cx, 0, 1, 7));
+    rounded(c, '#3e2815', 0, 6, w, h - 6);
+    rounded(c, '#8a5f36', 1, 7, w - 2, h - 8);
+    rounded(c, '#e0bd88', 3, 9, w - 6, h - 12);
+    rect(c, '#eed2a4', 4, 9, w - 8, 1);
+    [14, 21].forEach((gy) => rect(c, '#d3ad76', 4, gy, w - 8, 1));
   });
 
-  // A locked row: wall panels with room for the MORE SHELVES button
-  canvasTexture(scene, 'more_shelves_row', W, L.rowH, (c) => {
-    const rng = seeded(55);
+  // A row of shelves waiting to be repaired
+  hiTexture(scene, 'broken_row', W, L.rowH, (c) => {
     drawPanels(c, 0, 0, W, L.rowH);
-    const barH = Math.min(26, L.rowH - 12);
-    const barY = Math.floor((L.rowH - barH) / 2);
-    rect(c, '#5c3418', 5, barY, W - 10, barH);
-    rect(c, '#ee9a62', 6, barY + 1, W - 12, barH - 2);
-    rect(c, '#f9bb88', 6, barY + 1, W - 12, 1);
-    rect(c, '#c97440', 6, barY + barH - 2, W - 12, 1);
-    for (let i = 0; i < 26; i++) {
-      rect(c, rng() < 0.5 ? '#e08a52' : '#f4a874', 8 + Math.floor(rng() * (W - 26)), barY + 3 + Math.floor(rng() * (barH - 6)), 2 + Math.floor(rng() * 8), 1);
+    for (let col = 0; col < 4; col++) drawBrokenCubby(c, columnX(col), columnX(col + 1) - columnX(col), L.rowH, col);
+    // Hazard tape across the whole row, with room for its words
+    const tapeY = Math.floor(L.rowH / 2) - BROKEN_TAPE_H + 2;
+    rect(c, '#1b1d28', 0, tapeY - 0.5, W, BROKEN_TAPE_H + 1);
+    rect(c, '#f2c230', 0, tapeY, W, BROKEN_TAPE_H);
+    for (let x = -BROKEN_TAPE_H; x < W; x += 12) {
+      for (let i = 0; i < BROKEN_TAPE_H * 2; i++) rect(c, '#1b1d28', x + i * 0.5, tapeY + BROKEN_TAPE_H - 0.5 - i * 0.5, 4, 0.5);
     }
+    const panel = 72;
+    rect(c, '#f2c230', Math.floor((W - panel) / 2), tapeY, panel, BROKEN_TAPE_H);
   });
 
-  // The row after that: a padlocked shutter, stamped LOCKED
-  canvasTexture(scene, 'locked_row', W, L.rowH, (c) => {
-    const rng = seeded(61);
-    const rowH = L.rowH;
-    drawPanels(c, 0, 0, W, rowH);
-    rect(c, CREAM_SHADE, 3, 3, W - 6, rowH - 6);
-    rect(c, CREAM_LIGHT, 4, 3, W - 8, 2);
-    rect(c, INK, 6, 6, W - 12, rowH - 12);
-    drawSlats(c, rng, 7, 7, W - 14, rowH - 14);
+  // The till's wide customer display
+  hiTexture(scene, 'register_display', REGISTER_DISPLAY_W, REGISTER_DISPLAY_H, (c) => {
+    const w = REGISTER_DISPLAY_W;
+    const h = REGISTER_DISPLAY_H;
+    rounded(c, '#101c20', 0, 0, w, h);
+    rounded(c, '#2f5660', 0.5, 0.5, w - 1, h - 1);
+    rect(c, '#4c7a84', 1, 0.5, w - 2, 0.5);
+    rounded(c, '#0a1416', 1.5, 1.5, w - 3, h - 3);
+  });
 
-    // The stamp: big letters leaning uphill, with a rule above and below
-    const stamp = '#16303e';
-    const text = 'LOCKED';
-    const scale = 2;
-    const stampW = text.length * CHAR_W * scale - scale;
-    const stampX = Math.floor((W - stampW) / 2);
-    const stampY = Math.floor(rowH / 2) - 7;
-    const lean = (px: number) => 3 - Math.floor((px - stampX) / 14);
-    [...text].forEach((ch, i) => {
-      GLYPHS[ch].split('|').forEach((row, ry) => [...row].forEach((on, rx) => {
-        if (on !== '#') return;
-        const px = stampX + i * CHAR_W * scale + rx * scale;
-        rect(c, stamp, px, stampY + ry * scale + lean(px), scale + 1, scale);
-      }));
-    });
-    for (let px = stampX - 4; px < stampX + stampW + 4; px++) {
-      rect(c, stamp, px, stampY - 4 + lean(px), 1, 2);
-      rect(c, stamp, px, stampY + 15 + lean(px), 1, 2);
-    }
-    // Worn patches in the stamp
-    speckle(c, rng, stampX - 2, stampY - 3, stampW + 4, 20, [SHUTTER, SHUTTER_LIGHT], 0.025);
-
-    // Padlock over the bottom of the shutter
-    const lockX = Math.floor(W / 2) - 5;
-    const lockY = rowH - 15;
-    rect(c, INK, lockX + 2, lockY - 1, 7, 6);
-    rect(c, '#a6a8a4', lockX + 3, lockY, 5, 5);
-    rect(c, INK, lockX + 4, lockY + 1, 3, 4);
-    rect(c, INK, lockX, lockY + 4, 11, 10);
-    rect(c, '#c6ab74', lockX + 1, lockY + 5, 9, 8);
-    rect(c, '#e2cc98', lockX + 1, lockY + 5, 9, 1);
-    rect(c, '#94794a', lockX + 1, lockY + 12, 9, 1);
-    rect(c, INK, lockX + 5, lockY + 7, 1, 3);
-    rect(c, INK, lockX + 4, lockY + 7, 3, 1);
+  // Upgrades that aren't ready yet
+  canvasTexture(scene, 'icon_freezer', 18, 22, (c) => {
+    rounded(c, INK, 0, 0, 18, 22);
+    rounded(c, '#dfe6ea', 1, 1, 16, 20);
+    rect(c, '#b4c0c6', 1, 8, 16, 1);
+    rect(c, '#8a969c', 14, 3, 1, 3);
+    rect(c, '#8a969c', 14, 11, 1, 5);
+    rect(c, '#62b6e8', 4, 3, 5, 3);
+    rect(c, '#62b6e8', 6, 12, 1, 5);
+    rect(c, '#62b6e8', 4, 14, 5, 1);
+  });
+  canvasTexture(scene, 'icon_icecream', 18, 22, (c) => {
+    rounded(c, INK, 2, 0, 14, 22);
+    rounded(c, '#e8e4dc', 3, 1, 12, 20);
+    rect(c, '#b1aba0', 5, 3, 8, 6);
+    rect(c, '#f4b6c8', 7, 4, 4, 2);
+    rect(c, '#fbe0a8', 6, 6, 6, 2);
+    rect(c, '#8a8478', 8, 9, 2, 3);
+    rect(c, '#c98f50', 6, 14, 6, 3);
+    rect(c, '#c98f50', 7, 17, 4, 2);
+    rect(c, '#c98f50', 8, 19, 2, 1);
   });
 
   drawComputer(scene);
@@ -432,15 +446,11 @@ function rounded(c: Ctx, color: string, x: number, y: number, w: number, h: numb
   rect(c, color, x, y + 1, w, h - 2);
 }
 
-/** Three-by-five digits for the printing on the machines. */
-function tinyText(c: Ctx, color: string, x: number, y: number, text: string) {
-  let cx = x;
-  for (const ch of text) {
-    const rows = TINY_GLYPHS[ch].split('|');
-    rows.forEach((row, ry) => [...row].forEach((on, rx) => { if (on === '#') rect(c, color, cx + rx, y + ry, 1, 1); }));
-    cx += rows[0].length + 1;
-  }
-}
+/** The digits on the terminal's keys, placed by the payment screen, relative to the sprite's corner. */
+export const TERMINAL_DIGITS = [
+  ...Array.from({ length: 9 }, (_, i) => ({ text: String(i + 1), x: 8 + (i % 3) * 10 + 1, y: 24 + Math.floor(i / 3) * 7 })),
+  { text: '0', x: 19, y: 45 },
+];
 
 /** Grey monitor showing the shop screen, with a keyboard, mouse and receipt printer. */
 function drawComputer(scene: Phaser.Scene) {
@@ -565,13 +575,11 @@ function drawTerminal(scene: Phaser.Scene) {
         const kx = 8 + col * 10;
         const ky = 24 + row * 7;
         key(kx, ky, 9, 6, '#e6e4d2', '#fafaec', '#7a7c74');
-        tinyText(c, '#30323a', kx + 1, ky + 1, String(row * 3 + col + 1));
         rect(c, '#9a9c90', kx + 5, ky + 3, 3, 1);
       }
     }
     key(8, 45, 9, 6, '#d84a3c', '#f47e70', '#842218');
     key(18, 45, 9, 6, '#e6e4d2', '#fafaec', '#7a7c74');
-    tinyText(c, '#30323a', 19, 46, '0');
     rect(c, '#9a9c90', 23, 48, 3, 1);
     key(28, 45, 9, 6, '#f2b82e', '#ffdc70', '#94701a');
     key(38, 24, 8, 27, '#4fae3c', '#8ae068', '#266e24');
@@ -1037,8 +1045,8 @@ function drawTail(scene: Phaser.Scene) {
       const t = y / 10;
       const left = Math.round(4 - t * 4);
       const right = Math.round(14 - t * 13);
-      rect(c, INK, left, y, Math.max(1, right - left + 1), 1);
-      if (right - left >= 2) rect(c, FRAME, left + 1, y, right - left - 1, 1);
+      rect(c, BUBBLE_EDGE, left, y, Math.max(1, right - left + 1), 1);
+      if (right - left >= 2) rect(c, BUBBLE_FRAME, left + 1, y, right - left - 1, 1);
       if (right - left >= 6) rect(c, BUBBLE_PAPER, left + 3, y, right - left - 5, 1);
     }
   });
@@ -1067,15 +1075,6 @@ function drawProps(scene: Phaser.Scene) {
     rect(c, '#14100e', 20, 3, 8, 7);
     rect(c, '#d4aa70', 21, 4, 6, 5);
     rect(c, '#e8dcb8', 11, 14, 6, 9);
-  });
-  canvasTexture(scene, 'crate', 20, 18, (c) => {
-    rect(c, '#14100e', 0, 0, 20, 18);
-    rect(c, '#8f6a3b', 1, 1, 18, 16);
-    rect(c, '#b98d55', 1, 1, 18, 2);
-    rect(c, '#6d4f2b', 1, 5, 18, 1);
-    rect(c, '#6d4f2b', 1, 11, 18, 1);
-    rect(c, '#6d4f2b', 3, 1, 1, 16);
-    rect(c, '#6d4f2b', 16, 1, 1, 16);
   });
   canvasTexture(scene, 'menu_icon', 13, 11, (c) => {
     rect(c, '#fbf3df', 0, 0, 13, 2);
@@ -1152,15 +1151,15 @@ function drawInfoBoard(scene: Phaser.Scene) {
       rect(c, '#2d3036', 18 + i * 2, 4 - i, 2, 1);
     }
     rect(c, '#2d3036', 14, 4, 7, 1);
-    // Rounded teal case
+    // Charcoal case
     rounded(c, INK, 0, 5, TV_W, TV_H - 5);
-    rounded(c, FRAME, 1, 6, TV_W - 2, TV_H - 7);
-    rect(c, FRAME_LIGHT, 2, 6, TV_W - 4, 1);
-    rect(c, FRAME_DARK, 2, TV_H - 3, TV_W - 4, 1);
+    rounded(c, '#3a3d42', 1, 6, TV_W - 2, TV_H - 7);
+    rect(c, '#5a5e64', 2, 6, TV_W - 4, 1);
+    rect(c, '#25272b', 2, TV_H - 3, TV_W - 4, 1);
     // TMRW header
-    rounded(c, FRAME_DARK, 3, 7, TV_W - 6, 9);
-    // Screen bezel
-    rounded(c, CREAM_LIGHT, TV_SCREEN_X - 1, TV_SCREEN_Y - 1, SCREEN_W + 2, SCREEN_H + 2);
+    rounded(c, '#1c1e21', 3, 7, TV_W - 6, 9);
+    // Screen surround
+    rounded(c, '#101214', TV_SCREEN_X - 1, TV_SCREEN_Y - 1, SCREEN_W + 2, SCREEN_H + 2);
     rect(c, '#e8483c', TV_W - 7, TV_H - 4, 2, 1);
   });
   for (const [id, draw] of Object.entries(SCREENS)) {
@@ -1174,16 +1173,13 @@ function drawInfoBoard(scene: Phaser.Scene) {
 
   canvasTexture(scene, 'calendar', CALENDAR_W, CALENDAR_H, (c) => {
     rounded(c, INK, 0, 0, CALENDAR_W, CALENDAR_H);
-    rounded(c, FRAME, 1, 1, CALENDAR_W - 2, CALENDAR_H - 2);
-    rect(c, FRAME_LIGHT, 2, 1, CALENDAR_W - 4, 1);
-    // Paper, with a curled corner
-    rect(c, CREAM_LIGHT, 2, 11, CALENDAR_W - 4, CALENDAR_H - 13);
-    rect(c, CREAM_SHADE, CALENDAR_W - 6, CALENDAR_H - 5, 3, 1);
-    rect(c, CREAM_SHADE, CALENDAR_W - 5, CALENDAR_H - 4, 2, 1);
-    rect(c, FRAME, CALENDAR_W - 4, CALENDAR_H - 3, 2, 1);
+    rounded(c, '#f7f7f2', 1, 1, CALENDAR_W - 2, CALENDAR_H - 2);
+    // A curled corner
+    rect(c, '#d4d4cc', CALENDAR_W - 6, CALENDAR_H - 5, 3, 1);
+    rect(c, '#d4d4cc', CALENDAR_W - 5, CALENDAR_H - 4, 2, 1);
     // Fine lines between the day cells, which are drawn live on top
     const { x, y, cell, gap, rows } = CALENDAR_GRID;
-    rect(c, '#c9c2a4', x - 1, y - 1, 7 * (cell + gap) + 1, rows * (cell + gap) + 1);
+    rect(c, '#c4c4bc', x - 1, y - 1, 7 * (cell + gap) + 1, rows * (cell + gap) + 1);
   });
 
   const star = (key: string, fill: string, edge: string) =>
@@ -1212,8 +1208,8 @@ function drawInfoBoard(scene: Phaser.Scene) {
   // A stretch of new shelf, for the unlock celebration
   canvasTexture(scene, 'new_shelf', 60, 26, (c) => {
     rect(c, INK, 0, 0, 60, 26);
-    rect(c, FRAME, 1, 1, 58, 24);
-    rect(c, FRAME_LIGHT, 1, 1, 58, 1);
+    rect(c, STEEL, 1, 1, 58, 24);
+    rect(c, STEEL_LIGHT, 1, 1, 58, 1);
     for (let col = 0; col < 4; col++) {
       const cx = 3 + col * 14;
       rect(c, '#efc698', cx, 3, 12, 15);

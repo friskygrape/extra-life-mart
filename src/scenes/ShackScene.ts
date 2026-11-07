@@ -3,7 +3,7 @@ import { getProduct, shelfLabelName } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { CALENDAR_GRID, CALENDAR_H, CALENDAR_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONITOR_CENTRE_X, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
+import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONITOR_CENTRE_X, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
@@ -16,13 +16,13 @@ import { lightingAt } from '../logic/clock';
 import { buildRequest, chooseCash, emptyShelfComment, idleWait, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
 import { endDay, nothingToSell } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
-import { nextRowPrice } from '../logic/licences';
 import { onboardingStep, type OnboardingStep } from '../logic/onboarding';
-import { customerTender, formatCents, roundToNickel } from '../logic/money';
+import { saleTotal } from '../logic/checkout';
+import { customerTender, formatCents } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
 import { session } from '../session';
-import { BUBBLE_PAD, BUTTONS, Button, COLOURS, button, drawBubble, drawPaper, label, tinyLabel } from '../ui';
+import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel } from '../ui';
 
 const TABLE_CAPACITY = 4;
 const DELIVERY_SECONDS = 3;
@@ -49,19 +49,31 @@ const EMPTY_HANDED_MS = 2600;
 const greetingMs = (text: string) => Math.min(3000, 1100 + text.length * 30);
 /** How many of their lines to remember, so they don't repeat themselves straight away. */
 const RECENT_LINES = 30;
-const NAME_INK = 0x1b6c74;
-const CALENDAR_HEADER = 0x1b6c74;
-const CALENDAR_FUTURE = 0xfdf3da;
-const CALENDAR_PAST = 0xa9dcc8;
-const CALENDAR_TODAY = 0x1f9c8a;
+const NAME_INK = 0x8a4a1c;
+const PAY_ROW = 0xc97440;
+const CALENDAR_HEADER = 0x33383f;
+const CALENDAR_FUTURE = 0xffffff;
+const CALENDAR_PAST = 0xc8ccd0;
+const CALENDAR_TODAY = 0x2c2a33;
 const SHELF_PLUS = 0x8a5a34;
 const REGISTER_GREEN = 0x5fd06a;
 const REGISTER_RIGHT = 78;
+/** The till's art, measured from its top-left corner: its display, and the slot its paper comes from. */
+const REGISTER_ART_H = 72;
+const DISPLAY_X = 38;
+const DISPLAY_Y = 0;
+const PAPER_X = 20;
+const PAPER_W = 16;
+const PAPER_SLOT_Y = 28;
+/** The paper already sticking out of the till, and how much more a whole receipt feeds out. */
+const PAPER_RESTING_H = 14;
+const PAPER_FEED_H = 20;
+const BANNER_BG = 0x1b1d28;
 const DOORS_SHUT_DEPTH = 3;
 /** Once open, the doors stand behind the customers. */
 const DOORS_OPEN_DEPTH = 1;
 const DOOR_FRAME_MS = 65;
-const MORE_SHELVES_INK = 0x1b3346;
+const TAPE_INK = 0x1b1d28;
 /** How much of a shelf's glow remains while its light blinks off. */
 const SHELF_LIGHT_OFF = 0.12;
 
@@ -74,7 +86,6 @@ const RENT_RED = 0xc9503f;
 /** The first instruction waits a beat after loading. The next follows almost at once. */
 const FIRST_GUIDE_SECONDS = 0.6;
 const NEXT_GUIDE_SECONDS = 0.15;
-const GUIDE_NOTE_W = 100;
 const GUIDE_DEPTH = 7.5;
 const COMPUTER_W = COMPUTER_SPRITE_W;
 const computerTop = () => L.counterBottom - 6 + 2 - 60;
@@ -82,7 +93,8 @@ const shelfIsEmpty = (id: string) => session.state.shelves.find((s) => s.id === 
 const GUIDE_TEXT: Record<OnboardingStep, string> = {
   shelf: 'ADD ITEMS TO\nTHE SHELF\nBEFORE OPENING',
   sign: "OPEN THE STORE\nWHEN YOU'RE READY\nTO START SELLING",
-  computer: 'ORDER MORE SNACKS TO KEEP\nYOUR SHELVES STOCKED',
+  computer: 'ORDER MORE SNACKS TO\nKEEP SHELVES STOCKED',
+  close: 'THE STORE CLOSES\nAT 9 PM. TAP THE\nDOORS TO CLOSE UP\nAND GO HOME.',
 };
 const WEATHER_TINT: Record<WeatherId, { colour: number; alpha: number }> = {
   sunny: { colour: 0xffffff, alpha: 0 },
@@ -102,8 +114,6 @@ const boxX = () => L.W - 74;
 const slotLeft = (slot: ShelfSlot) => columnX(slot.col);
 const slotWidth = (slot: ShelfSlot) => columnX(slot.col + 1) - columnX(slot.col);
 const slotTop = (slot: ShelfSlot) => L.shelfTop + slot.row * L.rowH;
-const crateX = () => 14;
-const crateY = () => L.stripTop + 16;
 
 function mixColour(a: number, b: number, t: number): number {
   const mix = (shift: number) => Math.round(((a >> shift) & 255) * (1 - t) + ((b >> shift) & 255) * t) << shift;
@@ -143,6 +153,9 @@ export class ShackScene extends Phaser.Scene {
   /** Set once the doors have swung shut for the evening. */
   private shutForTheNight = false;
   private closedSign!: Phaser.GameObjects.BitmapText;
+  private doorHint!: Phaser.GameObjects.BitmapText;
+  private registerText!: Phaser.GameObjects.BitmapText;
+  private printedPaper!: Phaser.GameObjects.Graphics;
   private portrait!: Phaser.GameObjects.Image;
   private bubble!: Phaser.GameObjects.Graphics;
   private bubbleTail!: Phaser.GameObjects.Image;
@@ -167,10 +180,8 @@ export class ShackScene extends Phaser.Scene {
   private dayText!: Phaser.GameObjects.BitmapText;
   private clockText!: Phaser.GameObjects.BitmapText;
   private moneyText!: Phaser.GameObjects.BitmapText;
-  private hint!: Phaser.GameObjects.BitmapText;
-  private action!: Button;
-  private stockCount!: Phaser.GameObjects.BitmapText;
-  private crate!: Phaser.GameObjects.Image;
+  private banner!: Phaser.GameObjects.BitmapText;
+  private bannerBack!: Phaser.GameObjects.Rectangle;
   private box: Phaser.GameObjects.Image | null = null;
   private boxOpening = false;
   private deliveryIn = 0;
@@ -215,30 +226,38 @@ export class ShackScene extends Phaser.Scene {
     const doorLeftW = Math.floor(windowW / 2);
     this.doorLeft = this.add.image(windowX, windowY, 'door_l_0').setOrigin(0).setScale(0.5).setDepth(DOORS_SHUT_DEPTH);
     this.doorRight = this.add.image(windowX + doorLeftW, windowY, 'door_r_0').setOrigin(0).setScale(0.5).setDepth(DOORS_SHUT_DEPTH);
-    this.closedBoard = this.add.image(windowX + Math.floor(windowW / 2) - 32, windowY + Math.floor(windowH / 2) - 19, 'closed_sign').setOrigin(0).setDepth(3.4);
-    this.closedSign = label(this, windowX + Math.floor(windowW / 2), windowY + Math.floor(windowH / 2) - 4, 'CLOSED', COLOURS.ink, 'center').setDepth(3.5);
+    const doorCentre = windowX + Math.floor(windowW / 2);
+    const boardTop = windowY + Math.floor(windowH / 2) - 30;
+    this.closedBoard = this.add.image(doorCentre - Math.floor(CLOSED_SIGN_W / 2), boardTop, 'closed_sign').setOrigin(0).setDepth(3.4);
+    this.closedSign = label(this, doorCentre, boardTop + CLOSED_SIGN_H - 25, 'CLOSED', COLOURS.ink, 'center').setDepth(3.5);
+    this.doorHint = tinyLabel(this, doorCentre, boardTop + CLOSED_SIGN_H - 14, '', COLOURS.ink, 'center').setDepth(3.5);
     this.add.image(0, 0, 'shop').setOrigin(0).setScale(0.5).setDepth(4);
     this.warmLight = this.add.rectangle(0, 0, W, L.H, 0xffa050, 0).setOrigin(0).setDepth(4.05);
 
-    // The closed sign is a shortcut for opening up.
+    // The front doors: tap them to open up in the morning, and to shut up shop at night.
     this.add.rectangle(windowX, windowY, windowW, windowH, 0xffffff, 0).setOrigin(0).setDepth(3.6).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         if (session.modal) return;
-        if (session.phase === 'morning') this.openShop();
-        else this.skipGreeting();
+        if (session.phase === 'morning') this.openUp();
+        else if (this.everyoneServed()) this.closeUp();
+        else if (this.current?.greeting) this.skipGreeting();
+        else if (this.current && this.readyToPay) this.startPayment();
       });
 
     const standBottom = L.counterBottom - 6;
     this.add.image(1, standBottom, 'register').setOrigin(0, 1).setScale(0.5).setDepth(4.5);
-    tinyLabel(this, 66, standBottom - 68, '$0.00', REGISTER_GREEN, 'right').setDepth(4.6);
+    const registerTop = standBottom - REGISTER_ART_H;
+    this.add.image(1 + DISPLAY_X, registerTop + DISPLAY_Y, 'register_display').setOrigin(0).setScale(0.5).setDepth(4.52);
+    this.registerText = tinyLabel(this, 1 + DISPLAY_X + REGISTER_DISPLAY_W - 3, registerTop + DISPLAY_Y + Math.floor((REGISTER_DISPLAY_H - 7) / 2), '$0.00', REGISTER_GREEN, 'right').setDepth(4.6);
+    this.printedPaper = this.add.graphics({ x: 1 + PAPER_X, y: registerTop + PAPER_SLOT_Y }).setDepth(4.51);
     const computerX = W - COMPUTER_W - 2;
     const computerY = computerTop();
     this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
-    label(this, computerX + 28, computerY + 9, 'SHOP', COLOURS.white, 'center').setDepth(4.6);
+    tinyLabel(this, computerX + 28, computerY + 10, 'SHOP', COLOURS.white, 'center').setDepth(4.6);
     this.add.rectangle(computerX, computerY, COMPUTER_W, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         this.finishComputerTip();
-        this.openModal('Order');
+        this.openModal('Computer');
       });
 
     this.bubble = this.add.graphics().setDepth(5).setVisible(false);
@@ -276,18 +295,14 @@ export class ShackScene extends Phaser.Scene {
         .on('pointerup', () => this.tapSlot(slot));
     });
 
-    this.crate = this.add.image(crateX(), crateY(), 'crate').setDepth(7).setInteractive({ useHandCursor: true })
-      .on('pointerup', () => this.openModal('Inventory'));
-    this.stockCount = label(this, crateX(), crateY() - 3, '', COLOURS.white, 'center').setDepth(8);
-    this.hint = label(this, 28, L.stripTop + 2, '').setDepth(7);
-    this.hint.setMaxWidth(W - 116);
-    this.action = button(this, W - BUTTONS.stripW - 4, L.stripTop + 3, BUTTONS.stripW, BUTTONS.stripH, 'OPEN', () => this.pressAction(), COLOURS.accent, null);
-    this.action.rect.setDepth(7);
-    this.action.text.setDepth(8);
+    this.bannerBack = this.add.rectangle(0, 0, 0, 0, BANNER_BG, 0.88).setOrigin(0.5, 0).setDepth(6.8).setVisible(false);
+    this.banner = label(this, windowX + Math.floor(windowW / 2), windowY + 3, '', COLOURS.white, 'center').setDepth(7).setVisible(false);
+    this.banner.setMaxWidth(windowW - 10);
 
     session.events.on('shelves-changed', this.refreshShelves, this);
     session.events.on('begin-day', this.beginDay, this);
     session.events.on('say', this.say, this);
+    session.events.on('receipt-feed', this.feedReceipt, this);
     session.events.on('show-tender', () => {
       if (this.current) this.showPayment(this.current);
     });
@@ -320,38 +335,42 @@ export class ShackScene extends Phaser.Scene {
   }
 
   /** The arrow's place, and a note that stays clear of whatever matters at that step. */
-  private guidePlacement(step: OnboardingStep, noteH: number) {
+  private guidePlacement(step: OnboardingStep, noteW: number, noteH: number) {
     const arrowH = this.guideArrow.height;
+    const inWindow = L.windowX + Math.floor((L.windowW - noteW) / 2);
     if (step === 'computer') {
-      // The note goes in the bottom panel, because near the computer it would cover the customer's order.
-      const noteX = 28;
+      // The note goes at the top of the doorway, because near the computer it would cover the customer's order.
       return {
         arrowX: L.W - COMPUTER_W - 2 + MONITOR_CENTRE_X,
         arrowY: computerTop() - arrowH / 2 + 1,
-        noteX,
-        noteY: L.stripTop + 3,
-        noteW: L.W - noteX - 4,
+        noteX: inWindow,
+        noteY: L.windowY + 2,
       };
     }
-    const noteW = GUIDE_NOTE_W;
+    if (step === 'close') {
+      // The note hangs in the empty doorway, pointing down at the open door on the right.
+      const noteY = L.windowY + 6;
+      return { arrowX: L.windowX + L.windowW - 17, arrowY: noteY + noteH + arrowH / 2 + 1, noteX: inWindow, noteY };
+    }
     const arrowX = step === 'sign' ? L.windowX + Math.floor(L.windowW / 2) : columnX(1) + Math.floor((columnX(2) - columnX(1)) / 2);
     // Beside the arrow, staying clear of the till on the left and the computer on the right.
     const noteX = Math.max(REGISTER_RIGHT + 1, Math.min(L.W - COMPUTER_W - 3 - noteW, arrowX - Math.floor(noteW / 2)));
     if (step === 'sign') {
       // Below the sign, pointing up at it.
-      const arrowY = L.windowY + Math.floor(L.windowH / 2) + 12 + arrowH / 2;
-      return { arrowX, arrowY, noteX, noteY: arrowY + arrowH / 2 + 1, noteW };
+      const arrowY = L.windowY + Math.floor(L.windowH / 2) + 7 + arrowH / 2;
+      return { arrowX, arrowY, noteX, noteY: arrowY + arrowH / 2 + 1 };
     }
     // Above the shelf, pointing down at it.
     const arrowY = L.shelfTop - arrowH / 2 + 1;
-    return { arrowX, arrowY, noteX, noteY: arrowY - arrowH / 2 - 1 - noteH, noteW };
+    return { arrowX, arrowY, noteX, noteY: arrowY - arrowH / 2 - 1 - noteH };
   }
 
   private showGuide(step: OnboardingStep) {
     const pointsAtSign = step === 'sign';
     this.guideText.setText(GUIDE_TEXT[step]);
     const noteH = this.guideText.height + 5;
-    const { arrowX, arrowY, noteX, noteY, noteW } = this.guidePlacement(step, noteH);
+    const noteW = Math.ceil(this.guideText.width) + 7;
+    const { arrowX, arrowY, noteX, noteY } = this.guidePlacement(step, noteW, noteH);
     drawPaper(this.guideNote, noteX, noteY, noteW, noteH, false);
     this.guideText.setPosition(noteX + 3, noteY + 3);
 
@@ -377,7 +396,7 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private updateGuide(dt: number) {
-    const step = onboardingStep(session.state, session.phase, this.shelfStillSoldOut());
+    const step = onboardingStep(session.state, session.phase, this.shelfStillSoldOut(), this.everyoneServed());
     if (step !== this.guideStep) {
       // The very first instruction keeps its longer wait.
       if (this.guideStep !== null) this.guideWait = NEXT_GUIDE_SECONDS;
@@ -390,11 +409,6 @@ export class ShackScene extends Phaser.Scene {
     if (session.modal) return this.setGuideVisible(false);
     if (this.guideShown) {
       this.setGuideVisible(true);
-      // TAKE PAYMENT needs the space in the bottom panel.
-      if (step === 'computer' && this.action.rect.visible) {
-        this.guideNote.setVisible(false);
-        this.guideText.setVisible(false);
-      }
       return;
     }
     this.guideWait -= dt;
@@ -431,7 +445,7 @@ export class ShackScene extends Phaser.Scene {
     const y = wallY();
     this.add.image(x, y, 'tv').setOrigin(0).setDepth(4.5);
     this.tvScreen = this.add.image(x + TV_SCREEN_X, y + TV_SCREEN_Y, 'tv_sunny_0').setOrigin(0).setDepth(4.55);
-    label(this, x + Math.floor(TV_W / 2) + 1, y + 8, 'TMRW', COLOURS.white, 'center').setDepth(4.6);
+    tinyLabel(this, x + Math.floor(TV_W / 2), y + 9, 'TMRW', COLOURS.white, 'center').setDepth(4.6);
     this.time.addEvent({
       delay: TV_FRAME_MS,
       loop: true,
@@ -544,6 +558,7 @@ export class ShackScene extends Phaser.Scene {
     this.setDoors(0, DOORS_SHUT_DEPTH);
     this.closedBoard.setVisible(true);
     this.closedSign.setVisible(true);
+    this.doorHint.setVisible(true);
     this.refreshInfoBoard();
     this.refreshShelves();
     if (performance.now() >= session.messageUntil && !onboardingStep(session.state, session.phase)) {
@@ -571,7 +586,7 @@ export class ShackScene extends Phaser.Scene {
       const labelY = y + L.rowH - SHELF_LABEL_H;
       if (shelf.productId && shelf.qty > 0) {
         art.push(...this.shelfStock(shelf.productId, shelf.qty, x, w, labelY - 1));
-        const name = shelfLabelName(getProduct(shelf.productId).name, shelf.qty, w - 6);
+        const name = shelfLabelName(getProduct(shelf.productId), shelf.qty, w - 6);
         art.push(tinyLabel(this, x + 3, labelY + 3, name, COLOURS.ink).setDepth(6));
         art.push(tinyLabel(this, x + w - 3, labelY + 3, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
       } else {
@@ -600,17 +615,14 @@ export class ShackScene extends Phaser.Scene {
     });
   }
 
+  /** Rows you haven't repaired yet. */
   private refreshLockedRows() {
     this.rowArt.forEach((o) => o.destroy());
     this.rowArt = [];
-    const { rowsOwned } = session.state;
-    for (let row = rowsOwned; row < SHELF_ROWS; row++) {
+    for (let row = session.state.rowsOwned; row < SHELF_ROWS; row++) {
       const y = L.shelfTop + row * L.rowH;
-      const price = row === rowsOwned ? nextRowPrice(session.state) : null;
-      this.rowArt.push(this.add.image(0, y, price ? 'more_shelves_row' : 'locked_row').setOrigin(0).setDepth(5));
-      if (price) {
-        this.rowArt.push(label(this, Math.floor(L.W / 2), y + Math.floor(L.rowH / 2) - 4, `MORE SHELVES ${formatCents(price)}`, MORE_SHELVES_INK, 'center').setDepth(6));
-      }
+      this.rowArt.push(this.add.image(0, y, 'broken_row').setOrigin(0).setScale(0.5).setDepth(5));
+      this.rowArt.push(label(this, Math.floor(L.W / 2), y + Math.floor(L.rowH / 2) - BROKEN_TAPE_H + 3, 'OUT OF ORDER', TAPE_INK, 'center').setDepth(6));
     }
   }
 
@@ -633,13 +645,9 @@ export class ShackScene extends Phaser.Scene {
     }
   }
 
-  private stockTotal(): number {
-    return Object.values(session.state.stockroom).reduce((sum, n) => sum + n, 0);
-  }
-
   private tapSlot(slot: ShelfSlot) {
     if (session.modal) return;
-    if (slot.row >= session.state.rowsOwned) return this.openModal('Order', { tab: 'shelves' });
+    if (slot.row >= session.state.rowsOwned) return this.openModal('Computer', { page: 'upgrades' });
     const shelf = session.state.shelves.find((s) => s.id === slot.id)!;
     if (this.current?.greeting) return this.skipGreeting();
     if (shelf.qty > 0 && this.current && !this.busy) return this.fetch(slot, shelf.productId!);
@@ -669,7 +677,14 @@ export class ShackScene extends Phaser.Scene {
     if (isOrderComplete(customer.wants, session.table)) {
       this.time.delayedCall(PAYMENT_DELAY_MS, () => {
         // They may have taken something back during the pause.
-        if (this.current === customer && !session.modal && isOrderComplete(customer.wants, session.table)) this.startPayment();
+        if (this.current !== customer || !isOrderComplete(customer.wants, session.table)) return;
+        if (session.modal) {
+          // A menu opened during the pause, so wait for them to come back to it.
+          this.readyToPay = true;
+          this.renderBubble();
+        } else {
+          this.startPayment();
+        }
       });
     }
   }
@@ -692,12 +707,49 @@ export class ShackScene extends Phaser.Scene {
       this.tweens.add({ targets: item.image, x: tableItemX(i), y: tableY(), duration: 140, ease: 'Quad.easeOut' });
     });
     session.table = this.table.map((t) => t.productId);
+    this.showRunningTotal();
+  }
+
+  /** The till's display adds up what's on the counter, the same way the receipt will. */
+  private showRunningTotal() {
+    this.registerText.setText(formatCents(saleTotal(session.table, this.current?.paidByCash ?? false)));
+  }
+
+  /** Paper feeds out of the till, from none to a whole receipt, in step with the one on screen. */
+  private feedReceipt(fraction: number) {
+    const h = PAPER_RESTING_H + Math.round(PAPER_FEED_H * fraction);
+    const g = this.printedPaper;
+    this.tweens.killTweensOf(g);
+    g.clear().setAlpha(1).setY(this.paperRestY());
+    g.fillStyle(COLOURS.ink).fillRect(0, -h, PAPER_W, h);
+    g.fillStyle(COLOURS.paper).fillRect(1, -h + 1, PAPER_W - 2, h - 1);
+    g.fillStyle(0x9a9486);
+    for (let y = -h + 3; y < -2; y += 3) g.fillRect(3, y, y % 2 === 0 ? PAPER_W - 6 : PAPER_W - 9, 1);
+  }
+
+  private paperRestY() {
+    return L.counterBottom - 6 - REGISTER_ART_H + PAPER_SLOT_Y;
+  }
+
+  /** Torn off and gone once the sale is over or called off. */
+  private tearReceipt() {
+    const g = this.printedPaper;
+    this.tweens.killTweensOf(g);
+    this.tweens.add({
+      targets: g,
+      y: this.paperRestY() - 10,
+      alpha: 0,
+      duration: 320,
+      ease: 'Quad.easeOut',
+      onComplete: () => g.clear().setAlpha(1).setY(this.paperRestY()),
+    });
   }
 
   private clearTable() {
     this.table.forEach((t) => t.image.destroy());
     this.table = [];
     session.table = [];
+    this.showRunningTotal();
   }
 
   // ---- Deliveries ---------------------------------------------------------
@@ -762,15 +814,12 @@ export class ShackScene extends Phaser.Scene {
           onComplete: () => {
             this.tweens.add({
               targets: icon,
-              x: crateX(),
-              y: crateY(),
+              x: L.W - COMPUTER_W - 2 + MONITOR_CENTRE_X,
+              y: computerTop() + 16,
               scale: 0.5,
               duration: 360,
               ease: 'Quad.easeIn',
-              onComplete: () => {
-                icon.destroy();
-                this.tweens.add({ targets: this.crate, scale: 1.2, duration: 50, yoyo: true });
-              },
+              onComplete: () => icon.destroy(),
             });
           },
         });
@@ -952,7 +1001,7 @@ export class ShackScene extends Phaser.Scene {
     }
 
     // The list: finished lines become a solid green row with a check mark
-    const listTop = hasList ? this.listBubbleTop(requestLines(customer.wants, session.table).length) : bubbleY();
+    const listTop = hasList ? this.listBubbleTop(requestLines(customer.wants, session.table).length + (this.readyToPay ? 1 : 0)) : bubbleY();
     let y = this.receiptLines === null ? listTop + 4 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 11;
     if (hasList) {
       put(y, customer.name, NAME_INK);
@@ -969,6 +1018,12 @@ export class ShackScene extends Phaser.Scene {
         }
         y += 11;
       });
+      if (this.readyToPay) {
+        const row = this.add.rectangle(bubbleX() + 3, y - 1, bubbleW() - 6, 10, PAY_ROW).setOrigin(0).setDepth(5.5);
+        this.bubbleLines.push(row);
+        put(y, 'TAP TO PAY', COLOURS.white);
+        y += 11;
+      }
       // A bubble below takes over the tail, since the two would overlap.
       place(this.bubble, this.bubbleTail, listTop, y + 2, ruleY, !this.spoken);
       y += 9;
@@ -994,24 +1049,12 @@ export class ShackScene extends Phaser.Scene {
     return Math.max(L.windowY + 3, Math.min(bubbleY(), L.counterTop - 8 - listH - commentH));
   }
 
-  private pressAction() {
-    if (session.modal) return;
-    if (session.phase === 'morning') {
-      return nothingToSell(session.state) ? this.skipDay() : this.openShop();
-    }
-    if (this.everyoneServed()) {
-      sfx.click();
-      return this.closeBooks();
-    }
-    if (this.readyToPay) this.startPayment();
-  }
-
   private startPayment() {
     const customer = this.current;
     if (!customer || session.modal) return;
+    this.readyToPay = false;
     const items = session.table.slice();
-    const total = items.reduce((sum, id) => sum + getProduct(id).retail, 0);
-    const charged = customer.paidByCash ? roundToNickel(total) : total;
+    const charged = saleTotal(items, customer.paidByCash);
     if (customer.tender?.total !== charged) customer.tender = { total: charged, amount: customerTender(charged) };
     this.setDeskClear(true);
     this.receiptLines = Math.min(items.length, 4);
@@ -1026,6 +1069,7 @@ export class ShackScene extends Phaser.Scene {
       paidByCash: customer.paidByCash,
       tendered: customer.paidByCash ? customer.tender.amount : 0,
       onDone: (tip: number) => {
+        this.tearReceipt();
         this.setDeskClear(false);
         this.clearTable();
         this.dismiss();
@@ -1035,6 +1079,7 @@ export class ShackScene extends Phaser.Scene {
         if (this.soldOutPending) this.soldOutShelf = this.soldOutPending;
       },
       onBack: () => {
+        this.tearReceipt();
         this.hidePayment();
         this.setDeskClear(false);
         this.receiptLines = null;
@@ -1072,14 +1117,27 @@ export class ShackScene extends Phaser.Scene {
     }
   }
 
-  /** The last customer has gone: swing the doors shut, and hang up the sign. */
-  private shutDoorsForTheNight() {
+  /** The day's done: swing the doors shut, then go over the day's receipt. */
+  private closeUp() {
+    if (this.shutForTheNight) return;
     this.shutForTheNight = true;
+    session.modal = true;
     sfx.doorClose();
     this.swingDoors(DOOR_FRAMES - 1, 0, () => {
       this.closedBoard.setVisible(true);
       this.closedSign.setVisible(true);
+      this.closeBooks();
     });
+  }
+
+  /** With nothing to sell, the only way forward is tomorrow's delivery. */
+  private openUp() {
+    if (nothingToSell(session.state)) {
+      sfx.click();
+      this.closeBooks();
+    } else {
+      this.openShop();
+    }
   }
 
   private openShop() {
@@ -1097,13 +1155,8 @@ export class ShackScene extends Phaser.Scene {
     sfx.doorOpen();
     this.closedSign.setVisible(false);
     this.closedBoard.setVisible(false);
+    this.doorHint.setVisible(false);
     this.swingDoors(0, DOOR_FRAMES - 1, () => this.setDoors(DOOR_FRAMES - 1, DOORS_OPEN_DEPTH));
-  }
-
-  /** With nothing to sell, the only way forward is tomorrow's delivery. */
-  private skipDay() {
-    sfx.click();
-    this.closeBooks();
   }
 
   private openModal(scene: string, data?: object) {
@@ -1132,7 +1185,6 @@ export class ShackScene extends Phaser.Scene {
         session.toast('CLOSING TIME!');
       }
     }
-    if (!this.shutForTheNight && this.everyoneServed()) this.shutDoorsForTheNight();
     if (session.phase === 'open' || session.phase === 'closing') {
       if (!this.current && !this.busy && !session.modal && this.queue.length > 0) this.callNext();
     }
@@ -1168,33 +1220,26 @@ export class ShackScene extends Phaser.Scene {
     this.dayText.setText(`DAY ${state.day}`);
     this.clockText.setText(session.clockLabel());
     this.moneyText.setText(formatCents(state.balance));
-    this.stockCount.setText(String(this.stockTotal()));
-
-    const showAction = phase === 'morning' || this.everyoneServed() || (this.readyToPay && this.current !== null);
-    this.action.setVisible(showAction);
-    this.action.setLabel(phase === 'morning' ? (nothingToSell(state) ? 'SKIP DAY' : 'OPEN') : this.everyoneServed() ? 'CLOSE DAY' : 'TAKE PAYMENT');
-    this.hint.setText(this.hintText());
+    if (phase === 'morning') this.doorHint.setText(nothingToSell(state) ? 'TAP TO SKIP DAY' : 'TAP TO OPEN');
+    this.updateBanner();
   }
 
-  private hintText(): string {
-    // The first-day tip's note takes over the panel, so nothing should peek out from behind it.
-    if (this.guideStep === 'computer' && this.guideNote.visible) return '';
+  /** A short message at the top of the doorway, out of the way of the customer. */
+  private updateBanner() {
+    const text = this.bannerText();
+    const show = text !== '' && !session.modal;
+    this.banner.setVisible(show);
+    this.bannerBack.setVisible(show);
+    if (!show) return;
+    if (this.banner.text !== text) this.banner.setText(text);
+    this.bannerBack.setPosition(this.banner.x, this.banner.y - 2).setSize(Math.ceil(this.banner.width) + 8, Math.ceil(this.banner.height) + 3);
+  }
+
+  private bannerText(): string {
+    // These notes are at the top of the doorway, and already say what to do.
+    if ((this.guideStep === 'computer' || this.guideStep === 'close') && this.guideNote.visible) return '';
     if (performance.now() < session.messageUntil) return session.message;
-    const { state, phase, waiting } = session;
-    if (this.box && !this.boxOpening) return 'TAP THE BOX TO UNPACK IT';
-    // The guide's note is already saying what to do.
-    if (onboardingStep(state, phase)) return '';
-    if (phase === 'morning') {
-      if (nothingToSell(state)) return 'NOTHING TO SELL. ORDER MORE';
-      return anyShelfStocked(state) ? 'ORDER MORE OR OPEN UP' : 'TAP AN EMPTY SHELF TO STOCK IT';
-    }
-    if (this.current) {
-      if (this.current.wants.length === 0) return 'YOUR SHELVES ARE EMPTY!';
-      if (this.current.greeting) return 'TAP TO SEE THEIR ORDER';
-      return this.readyToPay ? 'TAP A TABLE ITEM TO CHANGE IT' : 'TAP SHELVES TO FETCH ITEMS';
-    }
-    if (phase === 'closing') return waiting ? 'LAST CUSTOMERS' : 'THE STORE HAS CLOSED';
-    return 'TAP SHELVES TO RESTOCK';
+    return this.everyoneServed() && !this.shutForTheNight ? 'TAP THE DOORS TO CLOSE UP' : '';
   }
 
   private closeBooks() {

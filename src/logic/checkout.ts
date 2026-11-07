@@ -1,4 +1,12 @@
+import { getProduct } from '../data/products';
+import { roundToNickel } from './money';
 import type { GameState } from './state';
+
+/** What these items come to: cash rounds to the nickel. The till's display and the receipt both use this. */
+export function saleTotal(items: string[], cash: boolean): number {
+  const total = items.reduce((sum, id) => sum + getProduct(id).retail, 0);
+  return cash ? roundToNickel(total) : total;
+}
 
 export type CashResult = { status: 'short'; missing: number } | { status: 'exact' } | { status: 'over'; extra: number };
 

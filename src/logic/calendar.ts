@@ -13,6 +13,6 @@ export const daysUntilRent = (day: number) => DAYS_PER_WEEK - 1 - weekdayIndex(d
 /** The calendar's one-line heading, tightening up as the week number grows so it always fits. */
 export function calendarHeading(day: number): string {
   const week = weekOf(day);
-  const weekText = week < 10 ? `WK ${week}` : week < 100 ? `W${week}` : String(week);
-  return `${weekdayName(day)} ${weekText}`;
+  if (week < 10) return `${weekdayName(day)} W${week}`;
+  return week < 100 ? `${weekdayName(day)} ${week}` : weekdayName(day);
 }

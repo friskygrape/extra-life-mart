@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { calendarHeading } from '../src/logic/calendar';
 import { flickerSteps, nextFlickerSeconds } from '../src/logic/flicker';
 import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelName } from '../src/data/products';
-import { tinyTextWidth } from '../src/art/tinyGlyphs';
+import { tinyTextWidth } from '../src/art/fontMetrics';
 import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
 import { clockLabel, lightingAt } from '../src/logic/clock';
-import { checkCard, checkChange, completeSale } from '../src/logic/checkout';
+import { checkCard, checkChange, completeSale, saleTotal } from '../src/logic/checkout';
 import { buildRequest, crowdFactor, emptyShelfComment, IDLE_MAX_SECONDS, idleWait, nextSpawnDelay, pickLook, shortenWhenIdle, snackDemand } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, nothingToSell, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
@@ -448,8 +448,12 @@ describe('clock', () => {
     expect(clockLabel(1 / 3 + 0.001)).toBe('1:00 PM');
     expect(clockLabel(1)).toBe('9:00 PM');
   });
+  it('moves on every minute', () => {
+    expect(clockLabel(1 / 720)).toBe('9:01 AM');
+    expect(clockLabel(37 / 720)).toBe('9:37 AM');
+  });
   it('never shows 24-hour numbers', () => {
-    for (let f = 0; f <= 1; f += 0.01) expect(clockLabel(f)).toMatch(/^([1-9]|1[0-2]):[0-5]0 (AM|PM)$/);
+    for (let f = 0; f <= 1; f += 0.01) expect(clockLabel(f)).toMatch(/^([1-9]|1[0-2]):[0-5][0-9] (AM|PM)$/);
   });
 });
 
@@ -511,8 +515,7 @@ describe('layout', () => {
       const l = computeLayout({ width, height, dpr, safeBottom: 20 });
       expect(l.counterTop).toBe(l.windowY + l.windowH);
       expect(l.shelfTop).toBe(l.counterBottom + 1);
-      expect(l.stripTop).toBe(l.shelfTop + l.rowH * 3);
-      expect(l.stripTop + l.stripH).toBe(l.H);
+      expect(l.shelfTop + l.rowH * 3 + l.safeBottom).toBe(l.H);
     }
   });
   it('never makes the window smaller than a customer', () => {
@@ -537,7 +540,7 @@ describe('layout', () => {
     const plain = computeLayout({ width: 390, height: 844, dpr: 3 });
     const safe = computeLayout({ width: 390, height: 844, dpr: 3, safeTop: 47, safeBottom: 34 });
     expect(safe.hudH).toBeGreaterThan(plain.hudH);
-    expect(safe.stripH).toBeGreaterThan(plain.stripH);
+    expect(safe.safeBottom).toBeGreaterThan(plain.safeBottom);
   });
 });
 
@@ -573,19 +576,33 @@ describe('shelf labels', () => {
   const narrowest = 48;
 
   it('keep the full name when it fits', () => {
-    expect(shelfLabelName('CRUNCH CHIPS', 12, 54)).toBe('CRUNCH CHIPS');
-    expect(shelfLabelName('ICE POP', 12, narrowest)).toBe('ICE POP');
+    expect(shelfLabelName(getProduct('chips'), 12, 80)).toBe('CRUNCH CHIPS');
+    expect(shelfLabelName(getProduct('icepop'), 12, narrowest)).toBe('ICE POP');
   });
 
   it('fall back to the first word on narrow shelves', () => {
-    expect(shelfLabelName('COCONUT WATER', 12, narrowest)).toBe('COCONUT');
+    expect(shelfLabelName(getProduct('chips'), 12, narrowest)).toBe('CRUNCH');
+    expect(shelfLabelName(getProduct('coconut'), 12, narrowest)).toBe('COCO');
   });
 
   it('always fit beside a two-digit count, even on the narrowest shelf', () => {
     for (const p of PRODUCTS) {
-      const shown = shelfLabelName(p.name, SHELF_CAPACITY, narrowest);
+      const shown = shelfLabelName(p, SHELF_CAPACITY, narrowest);
       expect(tinyTextWidth(shown) + 2 + tinyTextWidth(String(SHELF_CAPACITY))).toBeLessThanOrEqual(narrowest);
     }
+  });
+});
+
+describe('sale total', () => {
+  it('adds up exact cents for a card', () => {
+    expect(saleTotal(['chips', 'soda'], false)).toBe(189 + 159);
+  });
+  it('rounds to the nickel for cash, at every step', () => {
+    expect(saleTotal(['chips'], true)).toBe(190);
+    expect(saleTotal(['chips', 'soda'], true)).toBe(350);
+  });
+  it('is nothing for an empty counter', () => {
+    expect(saleTotal([], true)).toBe(0);
   });
 });
 
@@ -946,6 +963,8 @@ describe('first-day guide', () => {
     const s = newGame();
     s.hasOpened = true;
     expect(onboardingStep(s, 'open', true)).toBe('computer');
+    expect(onboardingStep(s, 'closing', true, true)).toBe('close');
+    expect(onboardingStep(s, 'closing', true, false)).toBe('computer');
     expect(onboardingStep(s, 'closing', true)).toBe('computer');
     expect(onboardingStep(s, 'open', false)).toBeNull();
     expect(onboardingStep(s, 'summary', true)).toBeNull();

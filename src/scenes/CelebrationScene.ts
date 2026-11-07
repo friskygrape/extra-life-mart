@@ -50,7 +50,7 @@ export class CelebrationScene extends Phaser.Scene {
       heading(114, product.name, COLOURS.ink);
       heading(128, `+${formatCents(product.retail - product.wholesale)} A SALE`, INK_GOOD);
     } else {
-      heading(10, 'NEW SHELVES!', INK_MUTED);
+      heading(10, 'SHELVES REPAIRED!', INK_MUTED);
       card.add(this.add.image(0, -8, 'new_shelf').setScale(2));
       heading(114, `SHELF ROW ${data.row}`, COLOURS.ink);
       heading(128, 'ROOM FOR 4 MORE SNACKS', INK_GOOD);
@@ -61,7 +61,7 @@ export class CelebrationScene extends Phaser.Scene {
     this.tweens.add({ targets: card, scale: 1, duration: 420, ease: 'Back.easeOut' });
 
     this.throwConfetti();
-    label(this, cx, PAPER_Y - 22, 'UNLOCKED!', COLOURS.gold, 'center').setScale(2).setDepth(5);
+    label(this, cx, PAPER_Y - 22, data.kind === 'licence' ? 'UNLOCKED!' : 'REPAIRED!', COLOURS.gold, 'center').setScale(2).setDepth(5);
 
     const done = mainButton(this, PAPER_Y + PAPER_H + 24, 'NICE!', () => this.close(), sfx.click);
     done.rect.setDepth(5);
@@ -86,7 +86,7 @@ export class CelebrationScene extends Phaser.Scene {
   }
 
   private close() {
-    this.scene.resume('Order');
+    this.scene.resume('Computer');
     this.scene.resume('Shack');
     this.scene.stop();
   }

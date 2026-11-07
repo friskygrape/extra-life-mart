@@ -14,8 +14,6 @@ export interface Layout {
   counterBottom: number;
   shelfTop: number;
   rowH: number;
-  stripTop: number;
-  stripH: number;
   safeBottom: number;
 }
 
@@ -42,7 +40,6 @@ const MAX_SIGN_EXTRA = 14;
 const MAX_COUNTER_EXTRA = 16;
 const BASE_ROW_H = 49;
 const MAX_ROW_H = 74;
-const STRIP_H = 32;
 
 /**
  * Picks the largest whole number of device pixels per game pixel that fits the
@@ -63,10 +60,9 @@ export function computeLayout({ width, height, dpr, safeTop = 0, safeBottom = 0 
   const safeTopPx = Math.ceil((safeTop * dpr) / scale);
   const safeBottomPx = Math.ceil((safeBottom * dpr) / scale);
   const hudH = 15 + safeTopPx;
-  const stripH = STRIP_H + safeBottomPx;
 
   // Spare height goes to the window and shelf rows.
-  const fixed = hudH + SIGN_H + BASE_WINDOW_H + COUNTER_H + 1 + BASE_ROW_H * 3 + stripH;
+  const fixed = hudH + SIGN_H + BASE_WINDOW_H + COUNTER_H + 1 + BASE_ROW_H * 3 + safeBottomPx;
   let spare = Math.max(0, H - fixed);
   const signExtra = Math.min(MAX_SIGN_EXTRA, Math.floor(spare * 0.3));
   const counterExtra = Math.min(MAX_COUNTER_EXTRA, Math.floor(spare * 0.3));
@@ -93,8 +89,6 @@ export function computeLayout({ width, height, dpr, safeTop = 0, safeBottom = 0 
     counterBottom,
     shelfTop,
     rowH,
-    stripTop: shelfTop + rowH * 3,
-    stripH,
     safeBottom: safeBottomPx,
   };
 }

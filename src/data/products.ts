@@ -1,4 +1,4 @@
-import { tinyTextWidth } from '../art/tinyGlyphs';
+import { tinyTextWidth } from '../art/fontMetrics';
 
 export interface Product {
   id: string;
@@ -35,10 +35,11 @@ export function getProduct(id: string): Product {
   return product;
 }
 
-/** The name to print on a shelf label: the full name if it fits beside the count, otherwise its first word. */
-export function shelfLabelName(name: string, qty: number, plateWidth: number): string {
+/** The name to print on a shelf label: the longest of its full name, first word and short name that fits beside the count. */
+export function shelfLabelName(product: Pick<Product, 'name' | 'short'>, qty: number, plateWidth: number): string {
   const room = plateWidth - tinyTextWidth(String(qty)) - 2;
-  return tinyTextWidth(name) <= room ? name : name.split(' ')[0];
+  const firstWord = product.name.split(' ')[0];
+  return [product.name, firstWord].find((name) => tinyTextWidth(name) <= room) ?? product.short;
 }
 
 export const SHELF_CAPACITY = 12;
