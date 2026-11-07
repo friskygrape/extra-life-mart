@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { FONT_KEY, FONT_SIZE, TINY_FONT_KEY, TINY_FONT_SIZE } from './art/font';
+import { BIG_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY } from './art/font';
 import { sfx } from './audio';
 import { ACTION_H, L } from './layout';
 
@@ -25,26 +25,25 @@ export const COLOURS = {
 
 export type Align = 'left' | 'center' | 'right';
 
-export function label(
-  scene: Phaser.Scene,
-  x: number,
-  y: number,
-  text: string,
-  color = COLOURS.white,
-  align: Align = 'left',
-): Phaser.GameObjects.BitmapText {
-  const t = scene.add.bitmapText(x, y, FONT_KEY, text.toUpperCase(), FONT_SIZE);
+function textIn(font: string, scene: Phaser.Scene, x: number, y: number, text: string, color: number, align: Align) {
+  const t = scene.add.bitmapText(x, y, font, text.toUpperCase(), TEXT_SIZE);
   t.setTint(color);
   t.setOrigin(align === 'left' ? 0 : align === 'center' ? 0.5 : 1, 0);
   return t;
 }
 
+export function label(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  return textIn(FONT_KEY, scene, x, y, text, color, align);
+}
+
 /** The same as label, in the small size. */
 export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
-  const t = scene.add.bitmapText(x, y, TINY_FONT_KEY, text.toUpperCase(), TINY_FONT_SIZE);
-  t.setTint(color);
-  t.setOrigin(align === 'left' ? 0 : align === 'center' ? 0.5 : 1, 0);
-  return t;
+  return textIn(TINY_FONT_KEY, scene, x, y, text, color, align);
+}
+
+/** The same as label, at double size. */
+export function bigLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  return textIn(BIG_FONT_KEY, scene, x, y, text, color, align);
 }
 
 export interface Button {

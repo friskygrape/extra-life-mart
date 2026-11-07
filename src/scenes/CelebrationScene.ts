@@ -3,7 +3,7 @@ import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
 import { formatCents } from '../logic/money';
-import { COLOURS, WIDTH, HEIGHT, backdrop, drawPaper, label, mainButton } from '../ui';
+import { bigLabel, COLOURS, WIDTH, HEIGHT, backdrop, drawPaper, label, mainButton } from '../ui';
 
 export type CelebrationData = { kind: 'licence'; productId: string } | { kind: 'shelves'; row: number };
 
@@ -61,7 +61,7 @@ export class CelebrationScene extends Phaser.Scene {
     this.tweens.add({ targets: card, scale: 1, duration: 420, ease: 'Back.easeOut' });
 
     this.throwConfetti();
-    label(this, cx, PAPER_Y - 22, data.kind === 'licence' ? 'UNLOCKED!' : 'REPAIRED!', COLOURS.gold, 'center').setScale(2).setDepth(5);
+    bigLabel(this, cx, PAPER_Y - 22, data.kind === 'licence' ? 'UNLOCKED!' : 'REPAIRED!', COLOURS.gold, 'center').setDepth(5);
 
     const done = mainButton(this, PAPER_Y + PAPER_H + 24, 'NICE!', () => this.close(), sfx.click);
     done.rect.setDepth(5);

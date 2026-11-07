@@ -1,18 +1,20 @@
 import Phaser from 'phaser';
-import { FONT_FAMILY, MAIN_STYLE, TINY_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
+import { L } from '../layout';
+import { BIG_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
 
 export const FONT_KEY = 'text';
 export const TINY_FONT_KEY = 'text_tiny';
-/** Sizes to ask for: half of each font's own size, so its letters land on the canvas's finer grid. */
-export const FONT_SIZE = 6;
-export const TINY_FONT_SIZE = 4;
+export const BIG_FONT_KEY = 'text_big';
+/** The size to ask for. Each font's real size comes from its style. */
+export const TEXT_SIZE = 1;
 
-/** The canvas's letters are capitals, digits and punctuation, plus the check mark. Text is always shown in capitals. */
+/** The fonts hold capitals, digits and punctuation, plus the check mark. Text is always shown in capitals. */
 const CHARS = [...Array.from({ length: 0x40 }, (_, i) => String.fromCharCode(0x20 + i)), '✓'];
 /** Letters can lean slightly past their width, so each gets a little room on either side. */
 const PAD = 2;
-/** Below this, a letter's soft edge is dropped, keeping the text as crisp as the rest of the art. */
-const EDGE_ALPHA = 96;
+const COLUMNS = 13;
+/** Empty space between letters on the sheet, so one can't bleed into another. */
+const GAP = 4;
 
 /** Fetches the font, so it's ready to draw letters from. If it can't load, the text falls back to a plain font. */
 export async function loadGameFont(): Promise<void> {
@@ -24,11 +26,16 @@ export async function loadGameFont(): Promise<void> {
   await Promise.allSettled([load('Bold', MAIN_STYLE.weight), load('Regular', TINY_STYLE.weight)]);
 }
 
+/** Draws a font's letters at the screen's own resolution, keeping their smooth edges. */
 function buildFont(scene: Phaser.Scene, key: string, style: TextStyle, size: number) {
-  const px = fontPx(style);
+  const scale = L.renderScale;
+  const px = fontPx(style) * scale;
   const cellW = Math.ceil(px * 1.1) + PAD * 2;
-  const texW = cellW * CHARS.length;
-  const tex = scene.textures.createCanvas(key, texW, style.height)!;
+  const cellH = Math.ceil(style.height * scale);
+  const rows = Math.ceil(CHARS.length / COLUMNS);
+  const texW = (cellW + GAP) * COLUMNS;
+  const texH = (cellH + GAP) * rows;
+  const tex = scene.textures.createCanvas(key, texW, texH)!;
   const ctx = tex.getContext();
   ctx.font = `${style.weight} ${px}px "${FONT_FAMILY}", sans-serif`;
   ctx.fillStyle = '#ffffff';
@@ -36,41 +43,48 @@ function buildFont(scene: Phaser.Scene, key: string, style: TextStyle, size: num
 
   const chars: Record<number, object> = {};
   CHARS.forEach((ch, i) => {
-    const x = i * cellW;
-    ctx.fillText(ch, x + PAD + digitInset(ch, style), style.baseline);
+    const x = (i % COLUMNS) * (cellW + GAP);
+    const y = Math.floor(i / COLUMNS) * (cellH + GAP);
+    // Anything hanging past its cell is cut off, or it would show on the letter next to it.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, cellW, cellH);
+    ctx.clip();
+    ctx.fillText(ch, x + PAD + digitInset(ch, style) * scale, y + style.baseline * scale);
+    ctx.restore();
     chars[ch.charCodeAt(0)] = {
       x,
-      y: 0,
+      y,
       width: cellW,
-      height: style.height,
+      height: cellH,
       centerX: Math.floor(cellW / 2),
-      centerY: Math.floor(style.height / 2),
+      centerY: Math.floor(cellH / 2),
       xOffset: -PAD,
       yOffset: 0,
-      xAdvance: charAdvance(ch, style),
+      xAdvance: charAdvance(ch, style) * scale,
       data: {},
       kerning: {},
       u0: x / texW,
-      v0: 0,
+      v0: y / texH,
       u1: (x + cellW) / texW,
-      v1: 1,
+      v1: (y + cellH) / texH,
     };
   });
-
-  const image = ctx.getImageData(0, 0, texW, style.height);
-  for (let i = 3; i < image.data.length; i += 4) image.data[i] = image.data[i] >= EDGE_ALPHA ? 255 : 0;
-  ctx.putImageData(image, 0, 0);
   tex.refresh();
+  // The art stays blocky, but text should stay smooth if it's ever shown off the pixel grid, such as mid-animation.
+  tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
 
   scene.cache.bitmapFont.add(key, {
-    data: { retroFont: true, font: key, size, lineHeight: style.lineHeight, chars },
+    // Shown at the requested size, each canvas pixel of a letter lands on exactly one pixel of the screen.
+    data: { retroFont: true, font: key, size: size * scale, lineHeight: style.lineHeight * scale, chars },
     frame: null,
     texture: key,
   });
 }
 
-/** Builds the two white fonts; tint them for colour. */
+/** Builds the white fonts; tint them for colour. */
 export function createGameFont(scene: Phaser.Scene): void {
-  buildFont(scene, FONT_KEY, MAIN_STYLE, FONT_SIZE * 2);
-  buildFont(scene, TINY_FONT_KEY, TINY_STYLE, TINY_FONT_SIZE * 2);
+  buildFont(scene, FONT_KEY, MAIN_STYLE, TEXT_SIZE);
+  buildFont(scene, TINY_FONT_KEY, TINY_STYLE, TEXT_SIZE);
+  buildFont(scene, BIG_FONT_KEY, BIG_STYLE, TEXT_SIZE);
 }

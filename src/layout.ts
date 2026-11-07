@@ -4,6 +4,8 @@ export interface Layout {
   H: number;
   /** CSS pixels per game pixel. */
   zoom: number;
+  /** Canvas pixels per game pixel: one for each of the screen's own, so text can be drawn at full sharpness. */
+  renderScale: number;
   hudH: number;
   signY: number;
   windowX: number;
@@ -25,8 +27,6 @@ export interface Viewport {
   safeBottom?: number;
 }
 
-/** The canvas holds this many pixels per game pixel, so finer art can sit beside the rest. */
-export const RENDER_SCALE = 2;
 export const MIN_W = 216;
 export const MIN_H = 384;
 const MAX_W = 300;
@@ -79,6 +79,7 @@ export function computeLayout({ width, height, dpr, safeTop = 0, safeBottom = 0 
     W,
     H,
     zoom: scale / dpr,
+    renderScale: Math.max(2, Math.ceil(scale)),
     hudH,
     signY: hudH + 1,
     windowX: WALL_W,

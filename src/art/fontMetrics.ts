@@ -74,9 +74,9 @@ export const FONT_FAMILY = 'Balsamiq Sans';
 const CAP_RATIO = 0.715;
 const DIGIT_ADVANCE = Math.max(...[...'0123456789'].map((d) => ADVANCE[d]));
 
-/** A text size, measured on the canvas, which has twice the game's pixels. */
+/** A text size, in game pixels. */
 export interface TextStyle {
-  /** Bold reads best at normal size. Small letters need the regular weight, or their gaps fill in. */
+  /** Bold reads best at normal size, and the regular weight keeps small letters open. */
   weight: number;
   /** Height of a capital letter. */
   capPx: number;
@@ -89,25 +89,26 @@ export interface TextStyle {
   tracking: number;
 }
 
-export const MAIN_STYLE: TextStyle = { weight: 700, capPx: 14, baseline: 15, height: 18, lineHeight: 20, tracking: 0 };
-export const TINY_STYLE: TextStyle = { weight: 400, capPx: 10, baseline: 11, height: 13, lineHeight: 14, tracking: 1 };
+export const MAIN_STYLE: TextStyle = { weight: 700, capPx: 7, baseline: 7.5, height: 9, lineHeight: 10, tracking: 0 };
+export const TINY_STYLE: TextStyle = { weight: 400, capPx: 5, baseline: 5.5, height: 6.5, lineHeight: 7, tracking: 0.5 };
+export const BIG_STYLE: TextStyle = { weight: 700, capPx: 14, baseline: 15, height: 18, lineHeight: 20, tracking: 0 };
 
 export const fontPx = (style: TextStyle) => style.capPx / CAP_RATIO;
 
-/** Canvas pixels from this letter to the next. All digits share one width, so counters don't jiggle as they change. */
+/** Game pixels from this letter to the next. All digits share one width, so counters don't jiggle as they change. */
 export function charAdvance(ch: string, style: TextStyle): number {
   const units = /[0-9]/.test(ch) ? DIGIT_ADVANCE : ADVANCE[ch] ?? 0;
-  return Math.round((units * fontPx(style)) / 1000) + style.tracking;
+  return (units * fontPx(style)) / 1000 + style.tracking;
 }
 
-/** How far in a digit sits, to centre it in the shared digit width. */
+/** How far in a digit sits, in game pixels, to centre it in the shared digit width. */
 export function digitInset(ch: string, style: TextStyle): number {
-  return /[0-9]/.test(ch) ? Math.round((((DIGIT_ADVANCE - ADVANCE[ch]) / 2) * fontPx(style)) / 1000) : 0;
+  return /[0-9]/.test(ch) ? (((DIGIT_ADVANCE - ADVANCE[ch]) / 2) * fontPx(style)) / 1000 : 0;
 }
 
 /** Width of text in game pixels. */
 export function textWidth(text: string, style: TextStyle = MAIN_STYLE): number {
-  return ([...text].reduce((sum, ch) => sum + charAdvance(ch, style), 0) - style.tracking) / 2;
+  return [...text].reduce((sum, ch) => sum + charAdvance(ch, style), 0) - style.tracking;
 }
 
 export const tinyTextWidth = (text: string) => textWidth(text, TINY_STYLE);

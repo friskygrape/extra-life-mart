@@ -3,7 +3,7 @@ import { isMuted, sfx, toggleMuted } from '../audio';
 import { L } from '../layout';
 import { isMusicOn, toggleMusic } from '../music';
 import { session } from '../session';
-import { BUTTONS, COLOURS, button, label } from '../ui';
+import { bigLabel, BUTTONS, COLOURS, button, label } from '../ui';
 
 const PANEL_W = 184;
 const PADDING = 10;
@@ -58,7 +58,7 @@ export class PauseScene extends Phaser.Scene {
     const gap = 4;
     const h = BUTTONS.largeH;
     const { x, y, w } = this.panel(PADDING * 2 + 24 + h * 4 + gap * 3 + 8);
-    this.track(label(this, Math.floor(L.W / 2), y + 2, 'PAUSE', COLOURS.gold, 'center').setScale(2));
+    this.track(bigLabel(this, Math.floor(L.W / 2), y + 2, 'PAUSE', COLOURS.gold, 'center'));
 
     let rowY = y + 24;
     const sound = this.track(button(this, x, rowY, w, h, soundLabel(), () => {

@@ -536,6 +536,12 @@ describe('layout', () => {
     expect(l.H).toBe(MIN_H);
     expect(l.zoom).toBeLessThan(1);
   });
+  it('gives the canvas one pixel for each of the screen\'s own, so text stays sharp', () => {
+    for (const [, width, height, dpr] of devices) {
+      const l = computeLayout({ width, height, dpr });
+      expect(l.renderScale).toBe(Math.round(l.zoom * dpr));
+    }
+  });
   it('keeps controls clear of a notch and gesture bar', () => {
     const plain = computeLayout({ width: 390, height: 844, dpr: 3 });
     const safe = computeLayout({ width: 390, height: 844, dpr: 3, safeTop: 47, safeBottom: 34 });

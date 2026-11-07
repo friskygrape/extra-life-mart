@@ -8,7 +8,7 @@ import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
 import { settleService } from '../logic/reputation';
 import { session } from '../session';
-import { BUTTONS, COLOURS, button, drawPaper, label, tinyLabel } from '../ui';
+import { BUTTONS, COLOURS, bigLabel, button, drawPaper, label, tinyLabel } from '../ui';
 
 interface RegisterData {
   items: string[];
@@ -223,7 +223,7 @@ export class RegisterScene extends Phaser.Scene {
       const nameY = names.length === 1 ? -4 : -8 + i * 8;
       bar.add(label(this, left + 2, nameY, name, COLOURS.ink));
     });
-    bar.add(label(this, barW / 2 - 2, -7, value, COLOURS.ink, 'right').setScale(2));
+    bar.add(bigLabel(this, barW / 2 - 2, -7, value, COLOURS.ink, 'right'));
     bar.setScale(1.25);
     this.tweens.add({ targets: bar, scale: 1, duration: 200, ease: 'Back.easeOut' });
   }
@@ -233,7 +233,7 @@ export class RegisterScene extends Phaser.Scene {
     this.panelName = name;
     this.controls.add(this.add.rectangle(4, this.top + 3, L.W - 8, 25, COLOURS.panelLight).setOrigin(0));
     this.panelLabel = label(this, 8, this.top + 12, name, COLOURS.gold);
-    this.panelValue = label(this, L.W - 8, this.top + 7, '$0.00', COLOURS.white, 'right').setScale(2);
+    this.panelValue = bigLabel(this, L.W - 8, this.top + 7, '$0.00', COLOURS.white, 'right');
     this.controls.add([this.panelLabel, this.panelValue]);
   }
 
