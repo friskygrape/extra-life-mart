@@ -208,6 +208,8 @@ export const DOOR_FRAMES = 8;
 export const CLOSED_SIGN_W = 78;
 export const CLOSED_SIGN_H = 36;
 export const BROKEN_TAPE_H = 11;
+/** Your bills and coins are drawn three art pixels to a game pixel. */
+export const MONEY_SCALE = 1 / 3;
 export const REGISTER_DISPLAY_W = 38;
 export const REGISTER_DISPLAY_H = 13;
 
@@ -335,8 +337,6 @@ function drawShop(scene: Phaser.Scene) {
       }
     }
 
-    // Below the shelves, clear of the phone's gesture bar
-    rect(c, PANEL_SEAM, 0, L.H - L.safeBottom, W, L.safeBottom);
   });
   for (let col = 0; col < 4; col++) drawShelfGlow(scene, columnX(col + 1) - columnX(col), L.rowH);
 
@@ -406,6 +406,79 @@ function drawShop(scene: Phaser.Scene) {
     rounded(c, '#2f5660', 0.5, 0.5, w - 1, h - 1);
     rect(c, '#4c7a84', 1, 0.5, w - 2, 0.5);
     rounded(c, '#0a1416', 1.5, 1.5, w - 3, h - 3);
+  });
+
+  // The icons on the computer's main page
+  canvasTexture(scene, 'pc_inventory', 32, 32, (c) => {
+    // A cardboard box, with its flaps open
+    rect(c, INK, 4, 11, 24, 18);
+    rect(c, '#c9974f', 5, 12, 22, 16);
+    rect(c, '#a97a3a', 5, 12, 22, 2);
+    rect(c, '#8a6229', 5, 26, 22, 2);
+    rect(c, '#efe0ac', 13, 12, 6, 16);
+    rect(c, '#d4c48e', 18, 12, 1, 16);
+    rect(c, '#8a6229', 21, 20, 4, 4);
+    rect(c, INK, 2, 6, 11, 6);
+    rect(c, '#e0b56c', 3, 7, 9, 4);
+    rect(c, INK, 19, 6, 11, 6);
+    rect(c, '#e0b56c', 20, 7, 9, 4);
+  });
+  canvasTexture(scene, 'pc_order', 32, 32, (c) => {
+    // A shopping cart
+    rect(c, INK, 1, 5, 6, 2);
+    rect(c, INK, 6, 5, 2, 6);
+    rect(c, INK, 7, 9, 22, 2);
+    rect(c, INK, 8, 20, 18, 2);
+    rect(c, INK, 7, 10, 2, 11);
+    rect(c, INK, 27, 10, 2, 7);
+    rect(c, INK, 25, 16, 3, 5);
+    rect(c, '#dfe6ea', 9, 11, 18, 9);
+    rect(c, '#808890', 9, 14, 18, 1);
+    rect(c, '#808890', 9, 17, 18, 1);
+    for (const lx of [13, 18, 23]) rect(c, '#808890', lx, 11, 1, 9);
+    rect(c, INK, 10, 23, 15, 1);
+    disc(c, INK, 12, 27, 2);
+    disc(c, INK, 23, 27, 2);
+    rect(c, '#c0c0c0', 12, 27, 1, 1);
+    rect(c, '#c0c0c0', 23, 27, 1, 1);
+  });
+  canvasTexture(scene, 'pc_licences', 32, 32, (c) => {
+    // A certificate with a red seal and ribbons
+    rect(c, INK, 2, 4, 28, 21);
+    rect(c, '#fbf3d6', 3, 5, 26, 19);
+    rect(c, '#c9a95a', 4, 6, 24, 1);
+    rect(c, '#c9a95a', 4, 22, 24, 1);
+    rect(c, '#c9a95a', 4, 6, 1, 17);
+    rect(c, '#c9a95a', 27, 6, 1, 17);
+    rect(c, '#10307a', 8, 9, 16, 2);
+    rect(c, '#6a6a6a', 7, 13, 18, 1);
+    rect(c, '#6a6a6a', 7, 16, 10, 1);
+    rect(c, '#b0352b', 18, 22, 3, 8);
+    rect(c, '#b0352b', 23, 22, 3, 8);
+    rect(c, '#7f231c', 20, 22, 1, 8);
+    disc(c, INK, 22, 20, 5);
+    disc(c, '#d9453a', 22, 20, 4);
+    disc(c, '#f2c230', 22, 20, 1);
+  });
+  canvasTexture(scene, 'pc_upgrades', 32, 32, (c) => {
+    // A wrench, on the diagonal
+    for (let i = 0; i < 17; i++) {
+      rect(c, INK, 6 + i, 24 - i, 5, 5);
+    }
+    for (let i = 0; i < 17; i++) {
+      rect(c, '#b4bcc2', 7 + i, 25 - i, 3, 3);
+      rect(c, '#e6ebee', 7 + i, 25 - i, 1, 1);
+    }
+    disc(c, INK, 7, 26, 5);
+    disc(c, '#b4bcc2', 7, 26, 4);
+    disc(c, INK, 7, 26, 1);
+    disc(c, INK, 25, 7, 6);
+    disc(c, '#b4bcc2', 25, 7, 5);
+    rect(c, '#b4bcc2', 21, 3, 8, 8);
+    // The open jaw
+    for (let i = 0; i < 8; i++) c.clearRect(25 + i, i - 1, 8, 1);
+    rect(c, INK, 25, 0, 1, 7);
+    rect(c, INK, 25, 7, 7, 1);
   });
 
   // Upgrades that aren't ready yet
@@ -874,158 +947,42 @@ function drawProducts(scene: Phaser.Scene) {
 
 // ---- Money, boxes and small props -----------------------------------------
 
-const BILLS: Record<number, { base: string; dark: string; light: string }> = {
-  2000: { base: '#5f9a63', dark: '#2f6b3f', light: '#a9d39f' },
-  1000: { base: '#4f9490', dark: '#27615f', light: '#a0d6cd' },
-  500: { base: '#5d7fb3', dark: '#35507e', light: '#b0c6e4' },
-  100: { base: '#8f9c62', dark: '#5c6a35', light: '#cdd6a3' },
-};
 
-const COINS: Record<number, { r: number; base: string; dark: string; light: string }> = {
-  50: { r: 15, base: '#e0b64a', dark: '#946d1f', light: '#f7dd8c' },
-  25: { r: 14, base: '#b9bfc9', dark: '#6f7686', light: '#e8ecf2' },
-  10: { r: 12, base: '#c3c8d0', dark: '#7a8090', light: '#eef0f4' },
-  5: { r: 13, base: '#98a0a8', dark: '#5c6470', light: '#c9ced4' },
-};
 
 /** Sizes of the money in the drawer, which follow the size of its slots. */
-export function drawerMoneySizes() {
-  const d = drawerLayout();
-  return { ...d, billW: Math.min(d.slotW - 8, 40), billSpriteH: Math.min(d.billH - 1, 64) };
-}
-
-/** The open drawer: dark slots in a teal tray, in the same colours as the till on the counter. */
+/** The open drawer: dark slots for the bills above rounded metal cups for the coins. Drawn to fit each screen. */
 function drawDrawerTray(scene: Phaser.Scene) {
   const d = drawerLayout();
-  canvasTexture(scene, 'drawer_tray', d.w, d.h, (c) => {
-    rect(c, '#2c2a33', 0, 0, d.w, d.h);
-    rect(c, '#1f6a68', 1, 1, d.w - 2, d.h - 2);
-    rect(c, '#2f8f8c', 1, 1, d.w - 2, 2);
-    const slot = (col: number, top: number, h: number) => {
-      const x = d.slotX(col) - d.x;
-      const y = top - d.y;
-      rect(c, '#0d2c2d', x, y, d.slotW, h);
-      rect(c, '#123c3d', x + 1, y + 3, d.slotW - 2, h - 3);
-      rect(c, '#07191a', x, y, d.slotW, 2);
-      // The floor of the slot catches the light
-      rect(c, '#1f6a68', x + 1, y + h - 1, d.slotW - 2, 1);
-    };
+  hiTexture(scene, 'drawer_tray', d.w, d.h, (c) => {
+    rect(c, '#101c20', 0, 0, d.w, d.h);
+    rect(c, '#2f5660', 0.5, 0.5, d.w - 1, d.h - 1);
+    rect(c, '#4c7a84', 1, 0.5, d.w - 2, 1);
     for (let col = 0; col < 4; col++) {
-      slot(col, d.billTop, d.billH);
-      slot(col, d.coinTop, d.coinH);
-    }
-    // Metal dividers between the slots
-    for (let col = 1; col < 4; col++) {
-      const x = d.slotX(col) - d.x - d.divider;
-      rect(c, '#8c969e', x, 2, d.divider, d.h - 4);
-      rect(c, '#c6ced4', x, 2, 1, d.h - 4);
-    }
-    const shelfY = d.coinTop - d.y - d.divider;
-    rect(c, '#8c969e', 2, shelfY, d.w - 4, d.divider);
-    rect(c, '#c6ced4', 2, shelfY, d.w - 4, 1);
-  });
-}
-
-function drawMoney(scene: Phaser.Scene) {
-  const drawer = drawerMoneySizes();
-  drawDrawerTray(scene);
-  for (const [cents, b] of Object.entries(BILLS)) {
-    // Bills stand on end in the drawer, with a couple more showing behind the front one
-    canvasTexture(scene, `drawer_${cents}`, drawer.billW, drawer.billSpriteH, (c) => {
-      const w = drawer.billW - 2;
-      const h = drawer.billSpriteH;
-      rect(c, b.dark, 2, 0, w, h);
-      rect(c, b.light, 3, 1, w - 2, 1);
-      rect(c, '#2c2a33', 0, 3, w, h - 3);
-      rect(c, b.dark, 1, 3, w - 2, 1);
-      rect(c, b.dark, 0, 5, w, h - 5);
-      rect(c, b.base, 1, 6, w - 2, h - 7);
-      rect(c, b.dark, 3, 8, w - 6, 1);
-      rect(c, b.dark, 3, h - 4, w - 6, 1);
-      rect(c, b.dark, 3, 8, 1, h - 11);
-      rect(c, b.dark, w - 4, 8, 1, h - 11);
-      for (const [cx, cy] of [[5, 10], [w - 9, 10], [5, h - 9], [w - 9, h - 9]]) {
-        rect(c, b.light, cx, cy, 4, 4);
-        rect(c, b.dark, cx + 1, cy + 1, 2, 2);
+      const x = d.slotX(col) - d.x;
+      // The bill slot, shadowed at the back
+      const y = d.billTop - d.y;
+      rect(c, '#0d1a1e', x, y, d.slotW, d.billH);
+      rect(c, '#1b3238', x + 1, y + 7, d.slotW - 2, d.billH - 7);
+      rect(c, '#24414a', x + 3, y + 7, d.slotW - 6, d.billH - 7);
+      // The coin cup, curving in at the bottom
+      const cy = d.coinTop - d.y;
+      rect(c, '#566a70', x, cy, d.slotW, d.coinH);
+      rect(c, '#7f949a', x, cy, d.slotW, 1);
+      const rows = d.coinH - 2;
+      for (let i = 0; i < rows * 2; i++) {
+        const t = i / (rows * 2);
+        const inset = 2 + (t > 0.7 ? ((t - 0.7) / 0.3) ** 2 * 7 : 0);
+        rect(c, '#3a4d53', x + inset, cy + 1 + i * 0.5, d.slotW - inset * 2, 0.5);
+        rect(c, '#8fa3a8', x + inset - 0.5, cy + 1 + i * 0.5, 0.5, 0.5);
+        rect(c, '#8fa3a8', x + d.slotW - inset, cy + 1 + i * 0.5, 0.5, 0.5);
       }
-      // The pale panel behind the printed value
-      const mid = 5 + Math.floor((h - 5) / 2);
-      rect(c, '#efe8cf', 5, mid - 7, w - 10, 14);
-      rect(c, b.dark, 5, mid - 8, w - 10, 1);
-      rect(c, b.dark, 5, mid + 7, w - 10, 1);
-    });
-    // The same bill redrawn at desk size, with its border, corners and centre panel
-    canvasTexture(scene, `desk_${cents}`, 32, 19, (c) => {
-      rect(c, '#2c2a33', 0, 0, 32, 19);
-      rect(c, b.dark, 1, 1, 30, 17);
-      rect(c, b.base, 2, 2, 28, 15);
-      [[3, 3], [26, 3], [3, 13], [26, 13]].forEach(([x, y]) => {
-        rect(c, b.light, x, y, 3, 3);
-        rect(c, b.dark, x + 1, y + 1, 1, 1);
-      });
-      rect(c, b.light, 6, 4, 20, 1);
-      rect(c, b.light, 6, 14, 20, 1);
-      rect(c, '#efe8cf', 6, 6, 20, 7);
-      rect(c, b.dark, 6, 5, 20, 1);
-      rect(c, b.dark, 6, 13, 20, 1);
-    });
-  }
-  for (const [cents, m] of Object.entries(COINS)) {
-    // A small pile in its cup: two coins behind the labelled one
-    const r = Math.min(m.r, Math.floor((drawer.coinH - 6) / 2));
-    const sideways = Math.floor((drawer.slotW - 2 * r - 3) / 2);
-    const w = drawer.slotW;
-    const h = 2 * r + 5;
-    canvasTexture(scene, `drawer_${cents}`, w, h, (c) => {
-      const coin = (cx: number, cy: number) => {
-        disc(c, '#14100e', cx, cy + 1, r);
-        disc(c, m.dark, cx, cy, r);
-        disc(c, m.base, cx, cy, r - 1);
-        disc(c, m.light, cx - 1, cy - 1, r - 3);
-        disc(c, m.base, cx, cy, r - 3);
-      };
-      const mid = Math.floor(w / 2);
-      coin(mid - sideways, r);
-      coin(mid + sideways, r);
-      coin(mid, r + 3);
-    });
-    const deskR = Math.max(7, Math.round(m.r * 0.6));
-    canvasTexture(scene, `desk_${cents}`, deskR * 2 + 3, deskR * 2 + 3, (c) => {
-      const mid = deskR + 1;
-      disc(c, m.dark, mid, mid, deskR);
-      disc(c, m.base, mid, mid, deskR - 1);
-      disc(c, m.light, mid - 1, mid - 1, deskR - 2);
-      disc(c, m.base, mid, mid, deskR - 2);
-      outline(c, deskR * 2 + 3, deskR * 2 + 3, '#2c2a33');
-    });
-  }
+      rect(c, '#8fa3a8', x + 9, cy + d.coinH - 1.5, d.slotW - 18, 0.5);
+    }
+    rect(c, '#7f949a', 1, d.coinTop - d.y - d.divider, d.w - 2, 1);
+  });
 }
 
 function drawCard(scene: Phaser.Scene) {
-  // A small stack of bills, so it reads as cash at a glance
-  canvasTexture(scene, 'held_cash', 34, 24, (c) => {
-    const bill = (x: number, y: number, base: string, dark: string, light: string) => {
-      rect(c, '#2c2a33', x, y, 30, 18);
-      rect(c, dark, x + 1, y + 1, 28, 16);
-      rect(c, base, x + 2, y + 2, 26, 14);
-      rect(c, light, x + 3, y + 3, 24, 1);
-      rect(c, light, x + 3, y + 14, 24, 1);
-    };
-    bill(4, 0, '#8f9c62', '#5c6a35', '#cdd6a3');
-    bill(2, 3, '#5d7fb3', '#35507e', '#b0c6e4');
-    bill(0, 6, '#5f9a63', '#2f6b3f', '#a9d39f');
-    disc(c, '#efe8cf', 15, 15, 6);
-    disc(c, '#2f6b3f', 15, 15, 5);
-    disc(c, '#efe8cf', 15, 15, 4);
-    // Dollar sign
-    const ink = '#2f6b3f';
-    rect(c, ink, 15, 11, 1, 9);
-    rect(c, ink, 13, 12, 5, 1);
-    rect(c, ink, 13, 13, 1, 2);
-    rect(c, ink, 13, 15, 5, 1);
-    rect(c, ink, 17, 16, 1, 2);
-    rect(c, ink, 13, 18, 5, 1);
-  });
   canvasTexture(scene, 'held_card', 26, 17, (c) => {
     rect(c, '#2c2a33', 0, 0, 26, 17);
     rect(c, '#2f6fb0', 1, 1, 24, 15);
@@ -1224,7 +1181,7 @@ function drawInfoBoard(scene: Phaser.Scene) {
 
 export function createTextures(scene: Phaser.Scene): void {
   drawShop(scene);
-  drawMoney(scene);
+  drawDrawerTray(scene);
   drawProps(scene);
   drawCard(scene);
   drawTail(scene);

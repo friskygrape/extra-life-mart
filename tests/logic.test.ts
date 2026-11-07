@@ -9,7 +9,7 @@ import { clockLabel, lightingAt } from '../src/logic/clock';
 import { checkCard, checkChange, completeSale, saleTotal } from '../src/logic/checkout';
 import { buildRequest, crowdFactor, emptyShelfComment, IDLE_MAX_SECONDS, idleWait, nextSpawnDelay, pickLook, shortenWhenIdle, snackDemand } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, nothingToSell, STARTER_BOX } from '../src/logic/day';
-import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf } from '../src/logic/inventory';
+import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf, totalInStore } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
 import { customerTender, DENOMINATIONS, formatCents, roundToNickel } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder, receiveOvernight, rushCost } from '../src/logic/orders';
@@ -128,19 +128,20 @@ describe('orders', () => {
     expect(s.stockroom.chips).toBe(24);
     expect(s.arrivals).toEqual({});
   });
-  it('a rush costs a quarter more and comes today', () => {
+  it('a rush is a flat $20 on top, however big the order, and comes today', () => {
     const s = newGame();
     const cart = { chips: BOX_SIZE };
-    expect(rushCost(cart)).toBe(1200);
+    expect(rushCost(cart)).toBe(960 + 2000);
+    expect(rushCost({ chips: BOX_SIZE * 5 })).toBe(960 * 5 + 2000);
     expect(placeOrder(s, cart, true)).toBe(true);
-    expect(s.balance).toBe(10000 - 1200);
-    expect(s.stats.orderSpend).toBe(1200);
+    expect(s.balance).toBe(10000 - 2960);
+    expect(s.stats.orderSpend).toBe(2960);
     expect(s.pendingOrders).toEqual({});
     expect(s.arrivals.chips).toBe(BOX_SIZE);
   });
   it('refuses a rush you can only afford at the normal price', () => {
     const s = newGame();
-    s.balance = 1000;
+    s.balance = 2000;
     expect(placeOrder(s, { chips: BOX_SIZE }, true)).toBe(false);
     expect(placeOrder(s, { chips: BOX_SIZE })).toBe(true);
   });
@@ -515,7 +516,7 @@ describe('layout', () => {
       const l = computeLayout({ width, height, dpr, safeBottom: 20 });
       expect(l.counterTop).toBe(l.windowY + l.windowH);
       expect(l.shelfTop).toBe(l.counterBottom + 1);
-      expect(l.shelfTop + l.rowH * 3 + l.safeBottom).toBe(l.H);
+      expect(l.shelfTop + l.rowH * 3).toBe(l.H);
     }
   });
   it('never makes the window smaller than a customer', () => {
@@ -541,6 +542,13 @@ describe('layout', () => {
       const l = computeLayout({ width, height, dpr });
       expect(l.renderScale).toBe(Math.round(l.zoom * dpr));
     }
+  });
+  it('leaves no empty strip for a large gesture bar', () => {
+    const plain = computeLayout({ width: 412, height: 785, dpr: 3.5 });
+    const safe = computeLayout({ width: 412, height: 785, dpr: 3.5, safeBottom: 48 });
+    expect(safe.safeBottom).toBeLessThanOrEqual(6);
+    expect(safe.shelfTop + safe.rowH * 3).toBe(safe.H);
+    expect(safe.rowH).toBe(plain.rowH);
   });
   it('keeps controls clear of a notch and gesture bar', () => {
     const plain = computeLayout({ width: 390, height: 844, dpr: 3 });
@@ -596,6 +604,26 @@ describe('shelf labels', () => {
       const shown = shelfLabelName(p, SHELF_CAPACITY, narrowest);
       expect(tinyTextWidth(shown) + 2 + tinyTextWidth(String(SHELF_CAPACITY))).toBeLessThanOrEqual(narrowest);
     }
+  });
+});
+
+describe('stock in the store', () => {
+  it('counts the stockroom and the shelves, and nothing else', () => {
+    const s = newGame();
+    s.stockroom.chips = 3;
+    s.shelves[0].productId = 'chips';
+    s.shelves[0].qty = 4;
+    s.pendingOrders.chips = 12;
+    expect(totalInStore(s, 'chips')).toBe(7);
+  });
+  it('is zero only when there are none anywhere', () => {
+    const s = newGame();
+    s.stockroom.chips = 0;
+    s.shelves[0].productId = 'chips';
+    s.shelves[0].qty = 1;
+    expect(totalInStore(s, 'chips')).toBe(1);
+    s.shelves[0].qty = 0;
+    expect(totalInStore(s, 'chips')).toBe(0);
   });
 });
 

@@ -1,18 +1,19 @@
 import Phaser from 'phaser';
 import { L } from '../layout';
-import { AMOUNT_STYLE, BIG_STYLE, BIG_TITLE_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, TITLE_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
+import { AMOUNT_STYLE, RECEIPT_STYLE, BIG_STYLE, BIG_TITLE_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, TITLE_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
 
 export const FONT_KEY = 'text';
 export const TINY_FONT_KEY = 'text_tiny';
 export const AMOUNT_FONT_KEY = 'text_amount';
+export const RECEIPT_FONT_KEY = 'text_receipt';
 export const BIG_FONT_KEY = 'text_big';
 export const TITLE_FONT_KEY = 'text_title';
 export const BIG_TITLE_FONT_KEY = 'text_big_title';
 /** The size to ask for. Each font's real size comes from its style. */
 export const TEXT_SIZE = 1;
 
-/** The fonts hold capitals, digits and punctuation, plus the check mark. Text is always shown in capitals. */
-const CHARS = [...Array.from({ length: 0x40 }, (_, i) => String.fromCharCode(0x20 + i)), '✓'];
+/** The fonts hold capitals, digits and punctuation, plus the check mark and cent sign. Text is always shown in capitals. */
+const CHARS = [...Array.from({ length: 0x40 }, (_, i) => String.fromCharCode(0x20 + i)), '✓', '\u00a2'];
 /** Letters can lean slightly past their width, so each gets a little room on either side. */
 const PAD = 2;
 const COLUMNS = 13;
@@ -90,6 +91,7 @@ export function createGameFont(scene: Phaser.Scene): void {
   buildFont(scene, FONT_KEY, MAIN_STYLE, TEXT_SIZE);
   buildFont(scene, TINY_FONT_KEY, TINY_STYLE, TEXT_SIZE);
   buildFont(scene, AMOUNT_FONT_KEY, AMOUNT_STYLE, TEXT_SIZE);
+  buildFont(scene, RECEIPT_FONT_KEY, RECEIPT_STYLE, TEXT_SIZE);
   buildFont(scene, BIG_FONT_KEY, BIG_STYLE, TEXT_SIZE);
   buildFont(scene, TITLE_FONT_KEY, TITLE_STYLE, TEXT_SIZE);
   buildFont(scene, BIG_TITLE_FONT_KEY, BIG_TITLE_STYLE, TEXT_SIZE);

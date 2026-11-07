@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
-import { textWidth } from '../art/fontMetrics';
-import { TERMINAL_DIGITS, drawerMoneySizes } from '../art/textures';
+import { RECEIPT_STYLE, textWidth } from '../art/fontMetrics';
+import { MONEY_SCALE, TERMINAL_DIGITS } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
-import { L, PAYMENT_PANEL_H, RECEIPT_LINE_H, bubbleW, bubbleX, receiptHeight } from '../layout';
+import { L, PAYMENT_PANEL_H, RECEIPT_LINE_H, drawerLayout, bubbleW, bubbleX, receiptHeight } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
 import { settleService } from '../logic/reputation';
 import { session } from '../session';
-import { BUTTONS, COLOURS, amountLabel, bigLabel, button, drawPaper, label, tinyLabel } from '../ui';
+import { BUTTONS, COLOURS, amountLabel, bigLabel, button, drawPaper, label, receiptLabel, tinyLabel } from '../ui';
 
 interface RegisterData {
   items: string[];
@@ -35,14 +35,22 @@ const SLIDE_MS = 160;
 const PANEL_MESSAGE_MS = 1300;
 const LIFT = 3;
 const FLY_MS = 130;
-const denominationLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}C`);
-const deskLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}`);
+const denominationLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}\u00a2`);
+const moneyArt = (cents: number) => (cents >= 100 ? `bill_${cents}` : `coin_${cents}`);
+/** The lighter band across each bill, in its own colour, and the line around it. */
+const BILL_BANDS: Record<number, { fill: number; edge: number }> = {
+  100: { fill: 0xcfdfba, edge: 0x35543c },
+  500: { fill: 0xd9e5ea, edge: 0x34506a },
+  1000: { fill: 0xdacfdd, edge: 0x4a3556 },
+  2000: { fill: 0xd2d5ae, edge: 0x3f4a30 },
+};
+const BAND_H = 13;
+const COIN_LABEL_H = 9;
 
 interface DeskPiece {
   cents: number;
   parts: { destroy(): void }[];
   sprite: Phaser.GameObjects.Image;
-  text: Phaser.GameObjects.BitmapText;
   hit: Phaser.GameObjects.Rectangle;
 }
 
@@ -137,20 +145,20 @@ export class RegisterScene extends Phaser.Scene {
       });
     };
     const row = (rowY: number, name: string, value: string) => {
-      label(this, x + 3, rowY, name, COLOURS.ink);
-      label(this, x + w - 3, rowY, value, COLOURS.ink, 'right');
+      receiptLabel(this, x + 3, rowY, name, COLOURS.ink);
+      receiptLabel(this, x + w - 3, rowY, value, COLOURS.ink, 'right');
     };
 
     lines.forEach((id, i) => {
       at(i * PRINT_LINE_MS, () => {
         const p = getProduct(id);
         const price = formatCents(p.retail);
-        const fits = textWidth(p.name) + textWidth(price) + 4 <= w - 6;
+        const fits = textWidth(p.name, RECEIPT_STYLE) + textWidth(price, RECEIPT_STYLE) + 4 <= w - 6;
         sfx.keypad();
         feed();
         drawPaper(paper, x, y, w, 5 + (i + 1) * RECEIPT_LINE_H, false);
-        label(this, x + 3, y + 3 + i * RECEIPT_LINE_H, fits ? p.name : p.short, COLOURS.ink);
-        label(this, x + w - 3, y + 3 + i * RECEIPT_LINE_H, price, COLOURS.ink, 'right');
+        receiptLabel(this, x + 3, y + 3 + i * RECEIPT_LINE_H, fits ? p.name : p.short, COLOURS.ink);
+        receiptLabel(this, x + w - 3, y + 3 + i * RECEIPT_LINE_H, price, COLOURS.ink, 'right');
       });
     });
 
@@ -244,8 +252,8 @@ export class RegisterScene extends Phaser.Scene {
 
   private buildCash() {
     this.buildPanel('CHANGE');
-    const d = drawerMoneySizes();
-    this.controls.add(this.add.image(d.x, d.y, 'drawer_tray').setOrigin(0));
+    const d = drawerLayout();
+    this.controls.add(this.add.image(d.x, d.y, 'drawer_tray').setOrigin(0).setScale(0.5));
     DENOMINATIONS.forEach((cents, i) => {
       if (i < 4) this.drawerBill(cents, i, d);
       else this.drawerCoin(cents, i - 4, d);
@@ -260,38 +268,41 @@ export class RegisterScene extends Phaser.Scene {
     addButton(button(this, giveX, actionsY, L.W - giveX - 4, BUTTONS.actionH, 'GIVE', () => this.giveChange(), COLOURS.accent, null));
   }
 
-  /** A stack of bills standing on end in its slot, with its value printed upright. */
-  private drawerBill(cents: number, col: number, d: ReturnType<typeof drawerMoneySizes>) {
+  /** A stack of bills standing on end in its slot, cut off by the tray, with a band to carry its value. */
+  private drawerBill(cents: number, col: number, d: ReturnType<typeof drawerLayout>) {
     const cx = d.slotX(col) + Math.floor(d.slotW / 2);
-    const bottom = d.billTop + d.billH;
-    const spriteY = bottom - d.billSpriteH;
-    const sprite = this.add.image(cx, spriteY, `drawer_${cents}`).setOrigin(0.5, 0);
-    // Centred on the pale panel of the front bill
-    const textY = spriteY + 5 + Math.floor((d.billSpriteH - 5) / 2) - 4;
-    const amount = label(this, cx - 1, textY, denominationLabel(cents), COLOURS.ink, 'center');
-    this.addSlot(cents, d.slotX(col), d.billTop, d.slotW, d.billH, sprite, amount);
+    const sprite = this.add.image(cx, d.billTop + 2, `bill_${cents}_up`).setOrigin(0.5, 0).setScale(MONEY_SCALE);
+    const shownH = Math.min(sprite.height * MONEY_SCALE, d.billH - 2);
+    sprite.setCrop(0, 0, sprite.width, shownH / MONEY_SCALE);
+    const bandY = d.billTop + 2 + Math.floor(shownH * 0.55) - Math.floor(BAND_H / 2);
+    const bandW = Math.min(d.slotW - 4, sprite.width * MONEY_SCALE + 4);
+    const { fill, edge } = BILL_BANDS[cents];
+    const band = this.add.rectangle(cx, bandY, bandW, BAND_H, fill).setOrigin(0.5, 0).setStrokeStyle(1, edge);
+    const amount = label(this, cx, bandY + 3, denominationLabel(cents), COLOURS.ink, 'center');
+    this.addSlot(cents, d.slotX(col), d.billTop, d.slotW, d.billH, [sprite, band, amount]);
   }
 
-  /** A little pile of coins in its cup. */
-  private drawerCoin(cents: number, col: number, d: ReturnType<typeof drawerMoneySizes>) {
+  /** Three coins in their cup, with their value above them. */
+  private drawerCoin(cents: number, col: number, d: ReturnType<typeof drawerLayout>) {
     const cx = d.slotX(col) + Math.floor(d.slotW / 2);
-    const sprite = this.add.image(cx, 0, `drawer_${cents}`).setOrigin(0.5, 0);
-    const spriteY = d.coinTop + Math.floor((d.coinH - sprite.height) / 2);
-    sprite.setY(spriteY);
-    // Centred on the front coin, which sits a little lower than the two behind it
-    const amount = label(this, cx, spriteY + Math.floor(sprite.height / 2), denominationLabel(cents), COLOURS.ink, 'center');
-    this.addSlot(cents, d.slotX(col), d.coinTop, d.slotW, d.coinH, sprite, amount);
+    const key = moneyArt(cents);
+    const natural = this.textures.get(key).getSourceImage().height;
+    const room = d.coinH - COIN_LABEL_H - 5;
+    const scale = Math.min(MONEY_SCALE, room / natural);
+    const size = natural * scale;
+    const top = d.coinTop + COIN_LABEL_H + 1;
+    const side = Math.min(size * 0.55, (d.slotW - size) / 2 - 1);
+    const left = this.add.image(cx - side, top, key).setOrigin(0.5, 0).setScale(scale);
+    const right = this.add.image(cx + side, top, key).setOrigin(0.5, 0).setScale(scale);
+    const front = this.add.image(cx, top + 3, key).setOrigin(0.5, 0).setScale(scale);
+    const amount = tinyLabel(this, cx, d.coinTop + 2, denominationLabel(cents), COLOURS.white, 'center');
+    this.addSlot(cents, d.slotX(col), d.coinTop, d.slotW, d.coinH, [left, right, front, amount]);
   }
 
   /** The whole slot is the tap target. Pressing lifts the money a little, ready to be taken. */
-  private addSlot(cents: number, x: number, y: number, w: number, h: number, sprite: Phaser.GameObjects.Image, amount: Phaser.GameObjects.BitmapText) {
-    const restY = sprite.y;
-    const textY = amount.y;
-    const press = (down: boolean) => {
-      const lift = down ? LIFT : 0;
-      sprite.setY(restY - lift);
-      amount.setY(textY - lift);
-    };
+  private addSlot(cents: number, x: number, y: number, w: number, h: number, parts: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle | Phaser.GameObjects.BitmapText)[]) {
+    const rest = parts.map((part) => part.y);
+    const press = (down: boolean) => parts.forEach((part, i) => part.setY(rest[i] - (down ? LIFT : 0)));
     const hit = this.add.rectangle(x, y, w, h, 0xffffff, 0).setOrigin(0)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => press(true))
@@ -300,24 +311,23 @@ export class RegisterScene extends Phaser.Scene {
         press(false);
         this.addToDesk(cents, x + w / 2, y + h / 2);
       });
-    this.controls.add([sprite, amount, hit]);
+    this.controls.add([...parts, hit]);
   }
 
   private addToDesk(cents: number, fromX: number, fromY: number) {
     if (this.finished || !this.ready) return;
     (cents >= 100 ? sfx.bill : sfx.coin)();
-    const sprite = this.add.image(0, 0, `desk_${cents}`);
-    const text = label(this, 0, 0, deskLabel(cents), COLOURS.ink, 'center');
-    const hit = this.add.rectangle(0, 0, Math.max(sprite.width, 20), 18, 0xffffff, 0).setInteractive({ useHandCursor: true });
-    const piece: DeskPiece = { cents, sprite, text, hit, parts: [sprite, text, hit] };
+    const sprite = this.add.image(0, 0, moneyArt(cents)).setScale(MONEY_SCALE);
+    const hit = this.add.rectangle(0, 0, Math.max(sprite.displayWidth, 20), Math.max(sprite.displayHeight, 18), 0xffffff, 0).setInteractive({ useHandCursor: true });
+    const piece: DeskPiece = { cents, sprite, hit, parts: [sprite, hit] };
     hit.on('pointerup', () => this.removePiece(piece));
     this.desk.push(piece);
     this.refreshDesk();
     // It flies up from the drawer and lands with a small bounce.
-    const flying = this.add.image(fromX, fromY, `desk_${cents}`).setDepth(200);
+    const flying = this.add.image(fromX, fromY, moneyArt(cents)).setScale(MONEY_SCALE).setDepth(200);
     this.tweens.add({ targets: flying, x: sprite.x, y: sprite.y, duration: FLY_MS, ease: 'Quad.easeOut', onComplete: () => flying.destroy() });
-    sprite.setScale(1.3);
-    this.tweens.add({ targets: sprite, scale: 1, duration: 110, delay: FLY_MS, ease: 'Quad.easeOut' });
+    sprite.setScale(MONEY_SCALE * 1.3);
+    this.tweens.add({ targets: sprite, scale: MONEY_SCALE, duration: 110, delay: FLY_MS, ease: 'Quad.easeOut' });
   }
 
   private removePiece(piece: DeskPiece) {
@@ -353,9 +363,9 @@ export class RegisterScene extends Phaser.Scene {
     this.panelValue.setTint(given === due ? COLOURS.green : given > due ? COLOURS.red : COLOURS.white);
 
     const deskLeft = 84;
-    const rowOne = { y: L.counterTop + 12, right: L.W - 56 };
-    const rowTwo = { y: L.counterTop + 29, right: L.W - 56 };
-    const width = (piece: DeskPiece) => piece.sprite.width;
+    const rowOne = { y: L.counterTop + 11, right: L.W - 56 };
+    const rowTwo = { y: L.counterTop + 25, right: L.W - 56 };
+    const width = (piece: DeskPiece) => piece.sprite.width * MONEY_SCALE;
     const fitRow = (pieces: DeskPiece[], row: { y: number; right: number }, baseDepth: number) => {
       if (pieces.length === 0) return;
       const room = row.right - deskLeft;
@@ -365,7 +375,6 @@ export class RegisterScene extends Phaser.Scene {
       pieces.forEach((piece, i) => {
         const cx = Math.round(x + width(piece) / 2);
         piece.sprite.setPosition(cx, row.y).setDepth(baseDepth + i * 3);
-        piece.text.setPosition(cx, row.y - 3).setDepth(baseDepth + i * 3 + 1);
         piece.hit.setPosition(cx, row.y).setDepth(baseDepth + i * 3 + 2);
         x += width(piece) + 1 - squeeze;
       });

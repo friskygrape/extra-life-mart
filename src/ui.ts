@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { AMOUNT_FONT_KEY, BIG_FONT_KEY, BIG_TITLE_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY, TITLE_FONT_KEY } from './art/font';
+import { AMOUNT_FONT_KEY, BIG_FONT_KEY, RECEIPT_FONT_KEY, BIG_TITLE_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY, TITLE_FONT_KEY } from './art/font';
 import { sfx } from './audio';
 import { ACTION_H, L } from './layout';
 
@@ -41,6 +41,11 @@ export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: strin
   return textIn(TINY_FONT_KEY, scene, x, y, text, color, align);
 }
 
+/** The same as label, a little smaller: for the ordinary lines on a receipt. */
+export function receiptLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  return textIn(RECEIPT_FONT_KEY, scene, x, y, text, color, align);
+}
+
 /** The same as label, a little larger: for the number to work from on a receipt. */
 export function amountLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
   return textIn(AMOUNT_FONT_KEY, scene, x, y, text, color, align);
@@ -64,6 +69,8 @@ export function bigTitle(scene: Phaser.Scene, x: number, y: number, text: string
 export interface Button {
   rect: Phaser.GameObjects.Rectangle;
   text: Phaser.GameObjects.BitmapText;
+  /** Anything else that makes up the button, drawn beneath its text. */
+  parts?: Phaser.GameObjects.GameObject[];
   setEnabled(enabled: boolean): void;
   setLabel(value: string): void;
   setVisible(visible: boolean): void;
@@ -153,6 +160,7 @@ export class ScrollList {
   readonly container: Phaser.GameObjects.Container;
   private readonly maskShape: Phaser.GameObjects.Graphics;
   private readonly thumb: Phaser.GameObjects.Rectangle | null = null;
+  private readonly track: Phaser.GameObjects.Rectangle | null = null;
   private readonly maxScroll: number;
   private scrollY = 0;
   private dragging = false;
@@ -186,6 +194,7 @@ export class ScrollList {
     private readonly height: number,
     contentHeight: number,
     startAt = 0,
+    bar?: { x: number; w: number; thumb: number; track: number },
   ) {
     this.container = scene.add.container(0, top);
     this.maxScroll = Math.max(0, contentHeight - height);
@@ -195,7 +204,8 @@ export class ScrollList {
     this.container.setMask(this.maskShape.createGeometryMask());
     if (this.maxScroll > 0) {
       const thumbH = Math.max(16, Math.round((height * height) / contentHeight));
-      this.thumb = scene.add.rectangle(WIDTH - 2, top, 2, thumbH, COLOURS.dim).setOrigin(0);
+      if (bar) this.track = scene.add.rectangle(bar.x, top, bar.w, height, bar.track).setOrigin(0);
+      this.thumb = scene.add.rectangle(bar?.x ?? WIDTH - 2, top, bar?.w ?? 2, thumbH, bar?.thumb ?? COLOURS.dim).setOrigin(0);
     }
     scene.input.on('pointerdown', this.onDown);
     scene.input.on('pointermove', this.onMove);
@@ -227,7 +237,7 @@ export class ScrollList {
   }
 
   addButton(b: Button): Button {
-    this.container.add([b.rect, b.text]);
+    this.container.add([...(b.parts ?? []), b.rect, b.text]);
     return b;
   }
 
@@ -249,6 +259,7 @@ export class ScrollList {
     this.container.destroy();
     this.maskShape.destroy();
     this.thumb?.destroy();
+    this.track?.destroy();
   }
 }
 

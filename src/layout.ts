@@ -34,10 +34,11 @@ const MAX_H = 640;
 const WALL_W = 37;
 const BASE_WINDOW_H = 113;
 const SIGN_H = 30;
-const COUNTER_H = 44;
-/** On taller screens, the sign and counter get closer to their full size. */
+const COUNTER_H = 38;
+/** On taller screens, the sign gets closer to its full size. */
 const MAX_SIGN_EXTRA = 14;
-const MAX_COUNTER_EXTRA = 16;
+/** Android can report a large gesture area, so payment buttons keep only this much clear of it, in game pixels. */
+const MAX_SAFE_BOTTOM = 6;
 const BASE_ROW_H = 49;
 const MAX_ROW_H = 74;
 
@@ -58,22 +59,21 @@ export function computeLayout({ width, height, dpr, safeTop = 0, safeBottom = 0 
   const W = Math.max(MIN_W, Math.min(fullW, MAX_W, Math.floor(H * 0.72)));
 
   const safeTopPx = Math.ceil((safeTop * dpr) / scale);
-  const safeBottomPx = Math.ceil((safeBottom * dpr) / scale);
+  const safeBottomPx = Math.min(MAX_SAFE_BOTTOM, Math.ceil((safeBottom * dpr) / scale));
   const hudH = 15 + safeTopPx;
 
   // Spare height goes to the window and shelf rows.
-  const fixed = hudH + SIGN_H + BASE_WINDOW_H + COUNTER_H + 1 + BASE_ROW_H * 3 + safeBottomPx;
+  const fixed = hudH + SIGN_H + BASE_WINDOW_H + COUNTER_H + 1 + BASE_ROW_H * 3;
   let spare = Math.max(0, H - fixed);
   const signExtra = Math.min(MAX_SIGN_EXTRA, Math.floor(spare * 0.3));
-  const counterExtra = Math.min(MAX_COUNTER_EXTRA, Math.floor(spare * 0.3));
-  spare -= signExtra + counterExtra;
-  const rowExtra = Math.min(MAX_ROW_H - BASE_ROW_H, Math.floor((spare * 0.55) / 3));
+  spare -= signExtra;
+  const rowExtra = Math.min(MAX_ROW_H - BASE_ROW_H, Math.floor((spare * 0.7) / 3));
   const rowH = BASE_ROW_H + rowExtra;
   const windowH = BASE_WINDOW_H + spare - rowExtra * 3;
 
   const windowY = hudH + SIGN_H + signExtra;
   const counterTop = windowY + windowH;
-  const counterBottom = counterTop + COUNTER_H + counterExtra;
+  const counterBottom = counterTop + COUNTER_H;
   const shelfTop = counterBottom + 1;
   return {
     W,
@@ -104,8 +104,8 @@ export function setLayout(layout: Layout): void {
 // Shared spots around the customer, used by the shop and the payment screen.
 export const portraitX = () => L.windowX + 43;
 export const bubbleX = () => portraitX() + 27;
-/** Level with the customer's face, whatever the window's height. */
-export const bubbleY = () => Math.max(L.windowY + 8, L.counterTop - 88);
+/** Level with the customer's face, and high enough to clear the computer. */
+export const bubbleY = () => Math.max(L.windowY + 8, L.counterTop - 100);
 export const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
 
 /** Distance between lines on a printed receipt, the same as on the customer's order. */

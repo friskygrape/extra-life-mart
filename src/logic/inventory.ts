@@ -34,6 +34,12 @@ export function emptyShelf(state: GameState, shelfId: string): void {
   shelf.qty = 0;
 }
 
+/** Everything you have of a snack in the store: in the stockroom and on the shelves. */
+export function totalInStore(state: GameState, productId: string): number {
+  const onShelves = state.shelves.filter((s) => s.productId === productId).reduce((sum, s) => sum + s.qty, 0);
+  return (state.stockroom[productId] ?? 0) + onShelves;
+}
+
 export function anyShelfStocked(state: GameState): boolean {
   return state.shelves.some((s) => s.qty > 0);
 }

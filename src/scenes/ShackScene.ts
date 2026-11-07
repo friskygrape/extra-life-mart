@@ -3,7 +3,7 @@ import { getProduct, shelfLabelName } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONITOR_CENTRE_X, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
+import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONEY_SCALE, MONITOR_CENTRE_X, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
@@ -89,6 +89,8 @@ const RENT_RED = 0xc9503f;
 const FIRST_GUIDE_SECONDS = 0.6;
 const NEXT_GUIDE_SECONDS = 0.15;
 const GUIDE_DEPTH = 7.5;
+const SHELF_NOTE = 'REPAIR THESE SHELVES FOR\nMORE SPACE. SELECT UPGRADES\nON THE COMPUTER.';
+const SHELF_NOTE_MS = 4000;
 const COMPUTER_W = COMPUTER_SPRITE_W;
 const computerTop = () => L.counterBottom - 6 + 2 - 60;
 const shelfIsEmpty = (id: string) => session.state.shelves.find((s) => s.id === id)?.qty === 0;
@@ -201,6 +203,11 @@ export class ShackScene extends Phaser.Scene {
   private tipBar!: Phaser.GameObjects.Rectangle;
   private tipBarBack!: Phaser.GameObjects.Rectangle;
   private recentLines: string[] = [];
+  private shelfNote!: Phaser.GameObjects.Graphics;
+  private shelfNoteText!: Phaser.GameObjects.BitmapText;
+  private shelfNoteTimer: Phaser.Time.TimerEvent | null = null;
+  /** A tap that only cleared the note shouldn't also open or close the store. */
+  private tapClearedNote = false;
   private guideArrow!: Phaser.GameObjects.Image;
   private guideNote!: Phaser.GameObjects.Graphics;
   private guideText!: Phaser.GameObjects.BitmapText;
@@ -241,7 +248,7 @@ export class ShackScene extends Phaser.Scene {
     // The front doors: tap them to open up in the morning, and to shut up shop at night.
     this.add.rectangle(windowX, windowY, windowW, windowH, 0xffffff, 0).setOrigin(0).setDepth(3.6).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
-        if (session.modal) return;
+        if (session.modal || this.tapClearedNote) return;
         if (session.phase === 'morning') this.openUp();
         else if (this.everyoneServed()) this.closeUp();
         else if (this.current?.greeting) this.skipGreeting();
@@ -262,7 +269,8 @@ export class ShackScene extends Phaser.Scene {
     this.add.rectangle(computerX, computerY, COMPUTER_W, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         this.finishComputerTip();
-        this.openModal('Computer');
+        // Always named, because a scene launched without one reuses the page it was last given.
+        this.openModal('Computer', { page: 'menu' });
       });
 
     this.bubble = this.add.graphics().setDepth(5).setVisible(false);
@@ -275,7 +283,14 @@ export class ShackScene extends Phaser.Scene {
     this.buildTv();
     this.buildCalendar();
     this.buildGuide();
-    this.heldMoney = this.add.image(propX(), propY(), 'held_cash').setDepth(5.1).setVisible(false);
+    this.shelfNote = this.add.graphics().setDepth(GUIDE_DEPTH).setVisible(false);
+    this.shelfNoteText = label(this, 0, 0, '', COLOURS.ink).setDepth(GUIDE_DEPTH + 0.1).setVisible(false);
+    // Any tap clears it. A tap on a broken shelf brings it straight back.
+    this.input.on('pointerdown', () => {
+      this.tapClearedNote = this.shelfNote.visible;
+      this.setShelfNoteVisible(false);
+    });
+    this.heldMoney = this.add.image(propX() + 14, propY(), 'bill_2000').setScale(MONEY_SCALE).setDepth(5.1).setVisible(false);
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
     // A little past the top edge, so rounding can't leave a sliver of the beach showing.
@@ -652,11 +667,31 @@ export class ShackScene extends Phaser.Scene {
 
   private tapSlot(slot: ShelfSlot) {
     if (session.modal) return;
-    if (slot.row >= session.state.rowsOwned) return this.openModal('Computer', { page: 'upgrades' });
+    if (slot.row >= session.state.rowsOwned) return this.showShelfNote(slot.row);
     const shelf = session.state.shelves.find((s) => s.id === slot.id)!;
     if (this.current?.greeting) return this.skipGreeting();
     if (shelf.qty > 0 && this.current && !this.busy) return this.fetch(slot, shelf.productId!);
     this.openModal('Stock', { shelfId: slot.id });
+  }
+
+  /** Over the broken row: what it would take to fix it. */
+  private showShelfNote(row: number) {
+    sfx.click();
+    this.shelfNoteTimer?.remove();
+    this.shelfNoteText.setText(SHELF_NOTE);
+    const w = Math.ceil(this.shelfNoteText.width) + 8;
+    const h = Math.ceil(this.shelfNoteText.height) + 5;
+    const x = Math.floor((L.W - w) / 2);
+    const y = L.shelfTop + row * L.rowH + Math.floor((L.rowH - h) / 2);
+    drawPaper(this.shelfNote, x, y, w, h, false);
+    this.shelfNoteText.setPosition(x + 4, y + 3);
+    this.setShelfNoteVisible(true);
+    this.shelfNoteTimer = this.time.delayedCall(SHELF_NOTE_MS, () => this.setShelfNoteVisible(false));
+  }
+
+  private setShelfNoteVisible(visible: boolean) {
+    this.shelfNote.setVisible(visible);
+    this.shelfNoteText.setVisible(visible);
   }
 
   private fetch(slot: ShelfSlot, productId: string) {
@@ -938,7 +973,7 @@ export class ShackScene extends Phaser.Scene {
     if (customer.wants.length === 0) return;
     const held = customer.paidByCash ? this.heldMoney : this.heldCard;
     this.tweens.killTweensOf(held);
-    held.setPosition(propX(), propY() - 22).setVisible(true).setAlpha(0);
+    held.setPosition(propX() + (customer.paidByCash ? 14 : 0), propY() - 22).setVisible(true).setAlpha(0);
     (customer.paidByCash ? sfx.bill : sfx.keypad)();
     this.tweens.add({ targets: held, y: propY(), alpha: 1, duration: 260, ease: 'Quad.easeOut' });
   }
@@ -1233,6 +1268,7 @@ export class ShackScene extends Phaser.Scene {
     this.moneyText.setText(formatCents(state.balance));
     if (phase === 'morning') this.doorHint.setText(nothingToSell(state) ? 'TAP TO SKIP DAY' : 'TAP TO OPEN');
     this.updateBanner();
+    if (session.modal) this.setShelfNoteVisible(false);
   }
 
   /** A short message at the top of the doorway, out of the way of the customer. */
