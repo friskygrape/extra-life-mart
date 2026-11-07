@@ -3,7 +3,7 @@ import { getProduct, shelfLabelName } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONEY_SCALE, MONITOR_CENTRE_X, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
+import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONITOR_CENTRE_X, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
@@ -18,9 +18,9 @@ import { endDay, nothingToSell } from '../logic/day';
 import { anyShelfStocked, returnItem, takeFromShelf } from '../logic/inventory';
 import { onboardingStep, type OnboardingStep } from '../logic/onboarding';
 import { saleTotal } from '../logic/checkout';
-import { customerTender, formatCents } from '../logic/money';
+import { customerTender, formatCents, tenderBills } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
-import { L, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight } from '../layout';
+import { L, TENDER_BILL_H, TENDER_BILL_W, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight, tenderLayout } from '../layout';
 import { session } from '../session';
 import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel, titleLabel } from '../ui';
 
@@ -167,7 +167,8 @@ export class ShackScene extends Phaser.Scene {
   private bubbleTail!: Phaser.GameObjects.Image;
   private speech!: Phaser.GameObjects.Graphics;
   private speechTail!: Phaser.GameObjects.Image;
-  private heldMoney!: Phaser.GameObjects.Image;
+  /** The customer's bills on the counter. */
+  private heldMoney!: Phaser.GameObjects.Container;
   private heldCard!: Phaser.GameObjects.Image;
   private bubbleLines: { destroy(): void }[] = [];
   private spoken = '';
@@ -290,7 +291,7 @@ export class ShackScene extends Phaser.Scene {
       this.tapClearedNote = this.shelfNote.visible;
       this.setShelfNoteVisible(false);
     });
-    this.heldMoney = this.add.image(propX() + 14, propY(), 'bill_2000').setScale(MONEY_SCALE).setDepth(5.1).setVisible(false);
+    this.heldMoney = this.add.container(0, 0).setDepth(5.1).setVisible(false);
     this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
 
     // A little past the top edge, so rounding can't leave a sliver of the beach showing.
@@ -325,6 +326,11 @@ export class ShackScene extends Phaser.Scene {
     session.events.on('receipt-feed', this.feedReceipt, this);
     session.events.on('show-tender', () => {
       if (this.current) this.showPayment(this.current);
+    });
+    // The payment screen takes their cash into the drawer, flying its own copies of these bills down.
+    session.events.on('tender-taken', () => {
+      this.tweens.killTweensOf(this.heldMoney);
+      this.heldMoney.setVisible(false);
     });
     session.events.on('order-placed', (rush: boolean) => {
       if (rush) this.deliveryIn = DELIVERY_SECONDS;
@@ -973,9 +979,19 @@ export class ShackScene extends Phaser.Scene {
     if (customer.wants.length === 0) return;
     const held = customer.paidByCash ? this.heldMoney : this.heldCard;
     this.tweens.killTweensOf(held);
-    held.setPosition(propX() + (customer.paidByCash ? 14 : 0), propY() - 22).setVisible(true).setAlpha(0);
+    let restY = propY();
+    if (customer.paidByCash) {
+      // The bills they actually pay with, largest first.
+      this.heldMoney.removeAll(true);
+      const bills = tenderBills(customer.tender?.amount ?? 0);
+      tenderLayout(bills.length).forEach(({ x, y }, i) => {
+        this.heldMoney.add(this.add.image(x, y, `bill_${bills[i]}_up`).setOrigin(0).setDisplaySize(TENDER_BILL_W, TENDER_BILL_H));
+      });
+      restY = 0;
+    }
+    held.setY(restY - 22).setVisible(true).setAlpha(0);
     (customer.paidByCash ? sfx.bill : sfx.keypad)();
-    this.tweens.add({ targets: held, y: propY(), alpha: 1, duration: 260, ease: 'Quad.easeOut' });
+    this.tweens.add({ targets: held, y: restY, alpha: 1, duration: 260, ease: 'Quad.easeOut' });
   }
 
   private hidePayment() {

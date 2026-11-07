@@ -223,7 +223,9 @@ function drawDoor(c: Ctx, w: number, h: number, openWidth: number, t: number, hi
     const u = i / (across - 1);
     const px = hingeOnLeft ? i : totalW - 1 - i;
     const top = Math.round(u * t * 44);
-    const bottom = totalH - Math.round(u * t * 16);
+    // The door carries on down behind the counter, so its bottom edge is never drawn. Only the kick plate's rail tilts with the swing.
+    const lift = Math.round(u * t * 16);
+    const bottom = totalH + 4;
     const edge = i === 0 || i === across - 1;
     const isStile = i < stile || i >= across - stile;
     const fill = (colour: string, y0: number, y1: number) => {
@@ -242,7 +244,7 @@ function drawDoor(c: Ctx, w: number, h: number, openWidth: number, t: number, hi
       continue;
     }
     const railTop = top + 10;
-    const railBottom = bottom - 22;
+    const railBottom = totalH - lift - 22;
     fill(STEEL_DARK, top, top + 1);
     fill(STEEL_LIGHT, top + 1, top + 3);
     fill(STEEL, top + 3, railTop - 1);

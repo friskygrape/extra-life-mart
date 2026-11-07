@@ -11,7 +11,7 @@ import { buildRequest, crowdFactor, emptyShelfComment, IDLE_MAX_SECONDS, idleWai
 import { applyBrokeSafeguard, dayProfit, endDay, nothingToSell, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf, totalInStore } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
-import { customerTender, DENOMINATIONS, formatCents, roundToNickel } from '../src/logic/money';
+import { customerTender, DENOMINATIONS, formatCents, roundToNickel, tenderBills } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder, receiveOvernight, rushCost } from '../src/logic/orders';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
 import { newGame, SAVE_VERSION, type GameState } from '../src/logic/state';
@@ -53,6 +53,21 @@ describe('money', () => {
   it('customers always tender more than the total', () => {
     for (const total of [1, 99, 100, 129, 500, 1000, 2000, 4276, 10000, 15996]) {
       for (const r of [0, 0.5, 0.99]) expect(customerTender(total, () => r)).toBeGreaterThan(total);
+    }
+  });
+  it('pays with the fewest bills, largest first', () => {
+    expect(tenderBills(500)).toEqual([500]);
+    expect(tenderBills(1300)).toEqual([1000, 100, 100, 100]);
+    expect(tenderBills(4600)).toEqual([2000, 2000, 500, 100]);
+    expect(tenderBills(5000)).toEqual([2000, 2000, 1000]);
+    expect(tenderBills(6000)).toEqual([2000, 2000, 2000]);
+  });
+  it('every amount a customer hands over is made of bills that add up to it', () => {
+    for (let total = 5; total <= 6000; total += 35) {
+      for (const r of [0, 0.5, 0.99]) {
+        const tendered = customerTender(total, () => r);
+        expect(tenderBills(tendered).reduce((a, b) => a + b, 0)).toBe(tendered);
+      }
     }
   });
 });

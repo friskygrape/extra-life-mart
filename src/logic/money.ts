@@ -12,6 +12,19 @@ export function formatCents(cents: number): string {
   return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
+/** The bills a customer pays with: the fewest that make the amount, largest first. Payments are whole dollars. */
+export function tenderBills(amount: number): number[] {
+  const bills: number[] = [];
+  let left = amount;
+  for (const bill of DENOMINATIONS.filter((d) => d >= 100)) {
+    while (left >= bill) {
+      bills.push(bill);
+      left -= bill;
+    }
+  }
+  return bills;
+}
+
 /** What a customer hands over: always more than the total, in amounts people really pay with. */
 export function customerTender(total: number, rng: () => number = Math.random): number {
   const options = [100, 500, 1000, 2000, 5000, 10000]

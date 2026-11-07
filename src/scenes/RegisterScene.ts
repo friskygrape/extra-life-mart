@@ -3,12 +3,13 @@ import { RECEIPT_STYLE, textWidth } from '../art/fontMetrics';
 import { MONEY_SCALE, TERMINAL_DIGITS } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
-import { L, PAYMENT_PANEL_H, RECEIPT_LINE_H, drawerLayout, bubbleW, bubbleX, receiptHeight } from '../layout';
+import { L, PAYMENT_PANEL_H, RECEIPT_LINE_H, TENDER_BILL_H, TENDER_BILL_W, drawerLayout, bubbleW, bubbleX, receiptHeight, tenderLayout } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
-import { DENOMINATIONS, formatCents } from '../logic/money';
+import { DENOMINATIONS, formatCents, tenderBills } from '../logic/money';
 import { settleService } from '../logic/reputation';
 import { session } from '../session';
-import { BUTTONS, COLOURS, amountLabel, bigLabel, button, drawPaper, label, receiptLabel, tinyLabel } from '../ui';
+import { BUTTONS, COLOURS, amountLabel, bigLabel, drawPaper, label, receiptLabel, tinyLabel, type Button } from '../ui';
+import { KEYS, TILL, drawLcd, tillKey } from '../tillUi';
 
 interface RegisterData {
   items: string[];
@@ -45,7 +46,17 @@ const BILL_BANDS: Record<number, { fill: number; edge: number }> = {
   2000: { fill: 0xd2d5ae, edge: 0x3f4a30 },
 };
 const BAND_H = 13;
+/** Every bill stands in the drawer at the same size, whatever its art measures, with two more of it behind. */
+const BILL_ASPECT = 178 / 76;
+const STACK_BEHIND = 2;
+const STACK_STEP = 2;
+const BILL_MARGIN = 3;
+/** Every coin in the drawer shows at the 5 cent coin's size. */
+const COIN_SIZE = 77 * MONEY_SCALE;
+const COIN_LABEL_TOP = 3;
 const COIN_LABEL_H = 9;
+const COIN_DROP = 3;
+const TAKE_MS = 200;
 
 interface DeskPiece {
   cents: number;
@@ -73,6 +84,10 @@ export class RegisterScene extends Phaser.Scene {
   private panelTimer: Phaser.Time.TimerEvent | null = null;
   private displayText: Phaser.GameObjects.BitmapText | null = null;
   private terminal: Phaser.GameObjects.Container | null = null;
+  /** Set once the customer's cash has gone into the drawer. */
+  private tenderTaken = false;
+  /** Gives a slot a small dip, as money lands in it. */
+  private slotDips = new Map<number, () => void>();
 
   constructor() {
     super('Register');
@@ -98,6 +113,8 @@ export class RegisterScene extends Phaser.Scene {
     this.terminal = null;
     this.displayText = null;
     this.panelTimer = null;
+    this.tenderTaken = false;
+    this.slotDips = new Map();
     session.sale = { items: data.items, total: data.total, paidByCash: data.paidByCash, tendered: data.tendered };
     session.servicePaused = true;
 
@@ -227,23 +244,31 @@ export class RegisterScene extends Phaser.Scene {
   /** The figure you're building right now: large, at the top of the payment area. */
   private buildPanel(name: string) {
     this.panelName = name;
-    this.controls.add(this.add.rectangle(4, this.top + 3, L.W - 8, 25, COLOURS.panelLight).setOrigin(0));
-    this.panelLabel = label(this, 8, this.top + 12, name, COLOURS.gold);
-    this.panelValue = bigLabel(this, L.W - 8, this.top + 7, '$0.00', COLOURS.white, 'right');
-    this.controls.add([this.panelLabel, this.panelValue]);
+    const screen = this.add.graphics();
+    drawLcd(screen, 3, this.top + 2, L.W - 6, 28);
+    this.panelLabel = label(this, 10, this.top + 12, name, TILL.lcdDim);
+    this.panelValue = bigLabel(this, L.W - 10, this.top + 7, '$0.00', TILL.lcd, 'right');
+    this.controls.add([screen, this.panelLabel, this.panelValue]);
+  }
+
+  /** The figure on the till's screen, marked with a tick when it's exactly right and red when it's too much. */
+  private showFigure(value: number, target: number) {
+    const exact = value === target;
+    this.panelValue.setText(`${exact ? '\u2713 ' : ''}${formatCents(value)}`);
+    this.panelValue.setTint(exact ? TILL.lcdMatch : value > target ? TILL.lcdOver : TILL.lcd);
   }
 
   /** A mistake takes over the panel's label for a moment. */
   private reject(text: string) {
     sfx.error();
-    this.panelLabel.setText(text).setTint(COLOURS.red);
+    this.panelLabel.setText(text).setTint(TILL.lcdOver);
     this.panelTimer?.remove();
     this.panelTimer = this.time.delayedCall(PANEL_MESSAGE_MS, () => this.resetPanelLabel());
     this.cameras.main.shake(140, 0.008);
   }
 
   private resetPanelLabel() {
-    this.panelLabel.setText(this.panelName).setTint(COLOURS.gold);
+    this.panelLabel.setText(this.panelName).setTint(TILL.lcdDim);
     this.panelTimer?.remove();
     this.panelTimer = null;
   }
@@ -261,41 +286,58 @@ export class RegisterScene extends Phaser.Scene {
 
     const actionsY = this.floor - BUTTONS.actionH;
     const actionW = Math.floor((L.W - 12) * 0.25);
-    const addButton = (b: { rect: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.BitmapText }) => this.controls.add([b.rect, b.text]);
-    addButton(button(this, 4, actionsY, actionW, BUTTONS.actionH, 'UNDO', () => this.undo()));
-    addButton(button(this, 6 + actionW, actionsY, actionW, BUTTONS.actionH, 'CLEAR', () => this.clearDesk()));
+    const addButton = (b: Button) => this.controls.add([...(b.parts ?? []), b.rect, b.text]);
+    addButton(tillKey(this, 4, actionsY, actionW, BUTTONS.actionH, 'UNDO', () => this.undo()));
+    addButton(tillKey(this, 6 + actionW, actionsY, actionW, BUTTONS.actionH, 'CLEAR', () => this.clearDesk()));
     const giveX = 8 + actionW * 2;
-    addButton(button(this, giveX, actionsY, L.W - giveX - 4, BUTTONS.actionH, 'GIVE', () => this.giveChange(), COLOURS.accent, null));
+    addButton(tillKey(this, giveX, actionsY, L.W - giveX - 4, BUTTONS.actionH, 'GIVE', () => this.giveChange(), KEYS.green, null));
   }
 
-  /** A stack of bills standing on end in its slot, cut off by the tray, with a band to carry its value. */
+  /** A stack of three bills standing on end in its slot, filling it across, cut off by the tray, with a band to carry its value. */
   private drawerBill(cents: number, col: number, d: ReturnType<typeof drawerLayout>) {
-    const cx = d.slotX(col) + Math.floor(d.slotW / 2);
-    const sprite = this.add.image(cx, d.billTop + 2, `bill_${cents}_up`).setOrigin(0.5, 0).setScale(MONEY_SCALE);
-    const shownH = Math.min(sprite.height * MONEY_SCALE, d.billH - 2);
-    sprite.setCrop(0, 0, sprite.width, shownH / MONEY_SCALE);
-    const bandY = d.billTop + 2 + Math.floor(shownH * 0.55) - Math.floor(BAND_H / 2);
-    const bandW = Math.min(d.slotW - 4, sprite.width * MONEY_SCALE + 4);
+    const stackW = STACK_BEHIND * STACK_STEP;
+    const billW = d.slotW - BILL_MARGIN * 2 - stackW;
+    const billLength = Math.round(billW * BILL_ASPECT);
+    const left = d.slotX(col) + BILL_MARGIN;
+    const top = d.billTop + 2 + stackW;
+    const key = `bill_${cents}_up`;
+    const frame = this.textures.get(key).getSourceImage();
+    const scaleY = billLength / frame.height;
+    // The ones behind peek out above and to the right, a little darker.
+    const layers = Array.from({ length: STACK_BEHIND + 1 }, (_, i) => STACK_BEHIND - i).map((back) => {
+      const y = top - back * STACK_STEP;
+      const shown = Math.min(billLength, d.billTop + d.billH - y);
+      const bill = this.add.image(left + back * STACK_STEP, y, key).setOrigin(0).setDisplaySize(billW, billLength);
+      bill.setCrop(0, 0, frame.width, shown / scaleY);
+      if (back > 0) bill.setTint(back === 1 ? 0xc4c4c4 : 0x9c9c9c);
+      return bill;
+    });
+    const shownH = Math.min(billLength, d.billTop + d.billH - top);
+    const cx = left + Math.floor(billW / 2);
+    const bandY = top + Math.floor(shownH * 0.55) - Math.floor(BAND_H / 2);
+    const bandW = Math.min(d.slotW - 2, billW + 4);
     const { fill, edge } = BILL_BANDS[cents];
     const band = this.add.rectangle(cx, bandY, bandW, BAND_H, fill).setOrigin(0.5, 0).setStrokeStyle(1, edge);
     const amount = label(this, cx, bandY + 3, denominationLabel(cents), COLOURS.ink, 'center');
-    this.addSlot(cents, d.slotX(col), d.billTop, d.slotW, d.billH, [sprite, band, amount]);
+    this.addSlot(cents, d.slotX(col), d.billTop, d.slotW, d.billH, [...layers, band, amount]);
   }
 
-  /** Three coins in their cup, with their value above them. */
+  /** Three coins in their cup, all the same size, centred under their value. */
   private drawerCoin(cents: number, col: number, d: ReturnType<typeof drawerLayout>) {
     const cx = d.slotX(col) + Math.floor(d.slotW / 2);
     const key = moneyArt(cents);
     const natural = this.textures.get(key).getSourceImage().height;
-    const room = d.coinH - COIN_LABEL_H - 5;
-    const scale = Math.min(MONEY_SCALE, room / natural);
-    const size = natural * scale;
-    const top = d.coinTop + COIN_LABEL_H + 1;
+    const areaTop = d.coinTop + COIN_LABEL_TOP + COIN_LABEL_H;
+    const areaH = d.coinTop + d.coinH - 2 - areaTop;
+    // Every cup shrinks by the same amount on a short screen, so the coins stay equal.
+    const size = Math.min(COIN_SIZE, areaH - COIN_DROP);
+    const scale = size / natural;
+    const top = Math.round(areaTop + (areaH - size - COIN_DROP) / 2);
     const side = Math.min(size * 0.55, (d.slotW - size) / 2 - 1);
     const left = this.add.image(cx - side, top, key).setOrigin(0.5, 0).setScale(scale);
     const right = this.add.image(cx + side, top, key).setOrigin(0.5, 0).setScale(scale);
-    const front = this.add.image(cx, top + 3, key).setOrigin(0.5, 0).setScale(scale);
-    const amount = tinyLabel(this, cx, d.coinTop + 2, denominationLabel(cents), COLOURS.white, 'center');
+    const front = this.add.image(cx, top + COIN_DROP, key).setOrigin(0.5, 0).setScale(scale);
+    const amount = label(this, cx, d.coinTop + COIN_LABEL_TOP, denominationLabel(cents), COLOURS.white, 'center');
     this.addSlot(cents, d.slotX(col), d.coinTop, d.slotW, d.coinH, [left, right, front, amount]);
   }
 
@@ -303,6 +345,10 @@ export class RegisterScene extends Phaser.Scene {
   private addSlot(cents: number, x: number, y: number, w: number, h: number, parts: (Phaser.GameObjects.Image | Phaser.GameObjects.Rectangle | Phaser.GameObjects.BitmapText)[]) {
     const rest = parts.map((part) => part.y);
     const press = (down: boolean) => parts.forEach((part, i) => part.setY(rest[i] - (down ? LIFT : 0)));
+    this.slotDips.set(cents, () => {
+      parts.forEach((part, i) => part.setY(rest[i] + 2));
+      this.time.delayedCall(90, () => parts.forEach((part, i) => part.setY(rest[i])));
+    });
     const hit = this.add.rectangle(x, y, w, h, 0xffffff, 0).setOrigin(0)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => press(true))
@@ -314,8 +360,35 @@ export class RegisterScene extends Phaser.Scene {
     this.controls.add([...parts, hit]);
   }
 
+  /** The customer's bills leave the counter for their slots in the drawer, clearing it for your change. */
+  private takeTender() {
+    this.tenderTaken = true;
+    session.events.emit('tender-taken');
+    const bills = tenderBills(this.tendered);
+    const d = drawerLayout();
+    tenderLayout(bills.length).forEach(({ x, y }, i) => {
+      const cents = bills[i];
+      const col = DENOMINATIONS.indexOf(cents as (typeof DENOMINATIONS)[number]);
+      const bill = this.add.image(x, y, `bill_${cents}_up`).setOrigin(0).setDisplaySize(TENDER_BILL_W, TENDER_BILL_H).setDepth(150);
+      this.tweens.add({
+        targets: bill,
+        x: d.slotX(col) + Math.floor((d.slotW - TENDER_BILL_W) / 2),
+        y: d.billTop + 4,
+        alpha: 0.4,
+        duration: TAKE_MS,
+        delay: i * 25,
+        ease: 'Quad.easeIn',
+        onComplete: () => {
+          bill.destroy();
+          this.slotDips.get(cents)?.();
+        },
+      });
+    });
+  }
+
   private addToDesk(cents: number, fromX: number, fromY: number) {
     if (this.finished || !this.ready) return;
+    if (!this.tenderTaken) this.takeTender();
     (cents >= 100 ? sfx.bill : sfx.coin)();
     const sprite = this.add.image(0, 0, moneyArt(cents)).setScale(MONEY_SCALE);
     const hit = this.add.rectangle(0, 0, Math.max(sprite.displayWidth, 20), Math.max(sprite.displayHeight, 18), 0xffffff, 0).setInteractive({ useHandCursor: true });
@@ -359,8 +432,7 @@ export class RegisterScene extends Phaser.Scene {
     this.resetPanelLabel();
     const due = this.tendered - this.total;
     const given = this.given();
-    this.panelValue.setText(formatCents(given));
-    this.panelValue.setTint(given === due ? COLOURS.green : given > due ? COLOURS.red : COLOURS.white);
+    this.showFigure(given, due);
 
     const deskLeft = 84;
     const rowOne = { y: L.counterTop + 11, right: L.W - 56 };
@@ -419,15 +491,15 @@ export class RegisterScene extends Phaser.Scene {
     const h = Math.floor((this.floor - gridY - gap * 3) / 4);
     const x = (col: number) => 4 + col * (w + gap);
     const y = (row: number) => gridY + row * (h + gap);
-    const key = (col: number, row: number, keyW: number, keyH: number, text: string, fill: number, sound: (() => void) | null) => {
-      const b = button(this, x(col), y(row), keyW, keyH, text, () => this.pressKey(text), fill, sound);
-      this.controls.add([b.rect, b.text]);
+    const key = (col: number, row: number, keyW: number, keyH: number, text: string, colours: typeof KEYS.teal, sound: (() => void) | null) => {
+      const b = tillKey(this, x(col), y(row), keyW, keyH, text, () => this.pressKey(text), colours, sound);
+      this.controls.add([...(b.parts ?? []), b.rect, b.text]);
     };
-    ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach((text, i) => key(i % 3, Math.floor(i / 3), w, h, text, COLOURS.button, sfx.keypad));
-    key(0, 3, w, h, 'CLR', 0x7d3a30, sfx.keypad);
-    key(1, 3, w, h, '0', COLOURS.button, sfx.keypad);
-    key(2, 3, w, h, 'DEL', 0x8c6d28, sfx.keypad);
-    key(3, 0, okW, h * 4 + gap * 3, 'OK', COLOURS.accent, null);
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach((text, i) => key(i % 3, Math.floor(i / 3), w, h, text, KEYS.teal, sfx.keypad));
+    key(0, 3, w, h, 'CLR', KEYS.red, sfx.keypad);
+    key(1, 3, w, h, '0', KEYS.teal, sfx.keypad);
+    key(2, 3, w, h, 'DEL', KEYS.orange, sfx.keypad);
+    key(3, 0, okW, h * 4 + gap * 3, 'OK', KEYS.green, null);
 
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       if (!this.ready) return;
@@ -471,10 +543,9 @@ export class RegisterScene extends Phaser.Scene {
     if (key === 'CLR') this.entered = 0;
     else if (key === 'DEL') this.entered = Math.floor(this.entered / 10);
     else this.entered = Math.min(this.entered * 10 + Number(key), 9999999);
-    const shown = formatCents(this.entered);
     this.resetPanelLabel();
-    this.panelValue.setText(shown).setTint(this.entered === this.total ? COLOURS.green : COLOURS.white);
-    this.displayText?.setText(shown);
+    this.showFigure(this.entered, this.total);
+    this.displayText?.setText(formatCents(this.entered));
   }
 
   // ---- Shared -------------------------------------------------------------

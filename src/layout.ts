@@ -118,6 +118,20 @@ export const ACTION_H = 36;
 /** Height of the figure at the top of the payment area, including the gaps around it. */
 export const PAYMENT_PANEL_H = 32;
 
+/** The customer's bills stand upright on the counter, small enough to fit its top. */
+export const TENDER_BILL_W = 13;
+export const TENDER_BILL_H = 30;
+const TENDER_LEFT = 86;
+const TENDER_STEP = 9;
+
+/** The top-left corner of each of the customer's bills on the counter, fanned out and overlapping, squeezed closer when there are many. */
+export function tenderLayout(count: number): { x: number; y: number }[] {
+  const room = L.W - 58 - TENDER_LEFT - TENDER_BILL_W;
+  const step = count > 1 ? Math.min(TENDER_STEP, Math.floor(room / (count - 1))) : 0;
+  const y = L.counterTop + 2;
+  return Array.from({ length: count }, (_, i) => ({ x: TENDER_LEFT + i * step, y }));
+}
+
 /** Where the open cash drawer sits: four tall bill slots above four coin cups. */
 export function drawerLayout() {
   const x = 2;
