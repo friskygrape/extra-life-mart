@@ -144,6 +144,7 @@ export const sfx = {
     noise(0.07, { freq: 400, vol: 0.1 });
   }),
   rip: sound(() => noise(0.22, { freq: 2600, vol: 0.09 })),
+  swipe: sound(() => noise(0.2, { freq: 1500, vol: 0.06 })),
   pop: sound(() => tone(620, 0.06, { slideTo: 940, vol: 0.03 })),
   stored: sound(() => tone(200, 0.1, { type: 'triangle', slideTo: 120, vol: 0.09 })),
   fanfare: sound(() => {

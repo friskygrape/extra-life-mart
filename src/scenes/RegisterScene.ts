@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import { RECEIPT_STYLE, textWidth } from '../art/fontMetrics';
+import { AMOUNT_STYLE, RECEIPT_STYLE, textWidth } from '../art/fontMetrics';
+import { billImage } from '../art/bills';
 import { MONEY_SCALE, TERMINAL_DIGITS } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
-import { L, PAYMENT_PANEL_H, RECEIPT_LINE_H, TENDER_BILL_H, TENDER_BILL_W, drawerLayout, bubbleW, bubbleX, receiptHeight, tenderLayout } from '../layout';
+import { BILL_STACK_STEP, L, PAYMENT_PANEL_H, RECEIPT_LINE_H, TENDER_BILL_H, TENDER_BILL_W, cardSpot, drawerBillSize, drawerLayout, bubbleW, bubbleX, receiptHeight, tenderLayout } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents, tenderBills } from '../logic/money';
 import { settleService } from '../logic/reputation';
@@ -17,13 +18,11 @@ interface RegisterData {
   paidByCash: boolean;
   tendered: number;
   receiptTop: number;
-  /** Called with the tip they left. */
-  onDone: (tip: number) => void;
+  /** Called with the tip they left, and anything you gave back too much. */
+  onDone: (tip: number, overpaid: number) => void;
   onBack: () => void;
 }
 
-const SUCCESS_INK = 0x0b6b3a;
-const OVER_INK = 0x9a5b00;
 const MAX_RECEIPT_LINES = 4;
 const RECEIPT_MIN_W = 116;
 const HIGHLIGHT_H = 15;
@@ -37,7 +36,6 @@ const PANEL_MESSAGE_MS = 1300;
 const LIFT = 3;
 const FLY_MS = 130;
 const denominationLabel = (cents: number) => (cents >= 100 ? `$${cents / 100}` : `${cents}\u00a2`);
-const moneyArt = (cents: number) => (cents >= 100 ? `bill_${cents}` : `coin_${cents}`);
 /** The lighter band across each bill, in its own colour, and the line around it. */
 const BILL_BANDS: Record<number, { fill: number; edge: number }> = {
   100: { fill: 0xcfdfba, edge: 0x35543c },
@@ -46,11 +44,14 @@ const BILL_BANDS: Record<number, { fill: number; edge: number }> = {
   2000: { fill: 0xd2d5ae, edge: 0x3f4a30 },
 };
 const BAND_H = 13;
-/** Every bill stands in the drawer at the same size, whatever its art measures, with two more of it behind. */
-const BILL_ASPECT = 178 / 76;
+/** Every bill stands in the drawer with two more of it behind. */
 const STACK_BEHIND = 2;
-const STACK_STEP = 2;
-const BILL_MARGIN = 3;
+/** Change on the counter: coins are about as wide as the upright bills, and each piece overlaps the last a little. */
+const DESK_COIN = 13;
+const DESK_OVERLAP = 2;
+const DESK_LEFT = 84;
+/** How long the customer stays to say goodbye. */
+const GOODBYE_MS = 1200;
 /** Every coin in the drawer shows at the 5 cent coin's size. */
 const COIN_SIZE = 77 * MONEY_SCALE;
 const COIN_LABEL_TOP = 3;
@@ -63,6 +64,8 @@ interface DeskPiece {
   parts: { destroy(): void }[];
   sprite: Phaser.GameObjects.Image;
   hit: Phaser.GameObjects.Rectangle;
+  /** Its size at rest. */
+  scale: number;
 }
 
 /** Dark digits on the terminal's grey-green screen. */
@@ -88,6 +91,8 @@ export class RegisterScene extends Phaser.Scene {
   private tenderTaken = false;
   /** Gives a slot a small dip, as money lands in it. */
   private slotDips = new Map<number, () => void>();
+  /** Everything printed on the receipt, cleared away when the customer says goodbye. */
+  private receiptParts: Phaser.GameObjects.GameObject[] = [];
 
   constructor() {
     super('Register');
@@ -115,6 +120,7 @@ export class RegisterScene extends Phaser.Scene {
     this.panelTimer = null;
     this.tenderTaken = false;
     this.slotDips = new Map();
+    this.receiptParts = [];
     session.sale = { items: data.items, total: data.total, paidByCash: data.paidByCash, tendered: data.tendered };
     session.servicePaused = true;
 
@@ -144,7 +150,10 @@ export class RegisterScene extends Phaser.Scene {
   /** The controls come straight up so the screen is never empty. Then the items print, the money lands, and the number to work from appears. */
   private reveal(items: string[], cash: boolean) {
     // Wide enough for the highlighted amount, leaning over the customer's shoulder on narrow screens.
-    const w = Math.max(bubbleW(), RECEIPT_MIN_W);
+    // Wide enough for the highlighted row's label and amount side by side.
+    const highlight = cash ? ['CHANGE DUE', formatCents(this.tendered - this.total)] : ['TOTAL', formatCents(this.total)];
+    const highlightW = textWidth(highlight[0]) + textWidth(highlight[1], AMOUNT_STYLE) + 16;
+    const w = Math.min(L.W - 6, Math.max(bubbleW(), RECEIPT_MIN_W, highlightW));
     const x = Math.min(bubbleX(), L.W - 3 - w);
     const y = this.info.receiptTop;
     const lines = items.slice(0, MAX_RECEIPT_LINES);
@@ -153,7 +162,7 @@ export class RegisterScene extends Phaser.Scene {
     const totalSteps = lines.length + (cash ? 3 : 1);
     let stepsDone = 0;
     const feed = () => session.events.emit('receipt-feed', ++stepsDone / totalSteps);
-    const paper = this.add.graphics();
+    const paper = this.keep(this.add.graphics());
     drawPaper(paper, x, y, w, 5, false);
 
     const at = (ms: number, step: () => void) => {
@@ -162,8 +171,8 @@ export class RegisterScene extends Phaser.Scene {
       });
     };
     const row = (rowY: number, name: string, value: string) => {
-      receiptLabel(this, x + 3, rowY, name, COLOURS.ink);
-      receiptLabel(this, x + w - 3, rowY, value, COLOURS.ink, 'right');
+      this.keep(receiptLabel(this, x + 3, rowY, name, COLOURS.ink));
+      this.keep(receiptLabel(this, x + w - 3, rowY, value, COLOURS.ink, 'right'));
     };
 
     lines.forEach((id, i) => {
@@ -174,8 +183,8 @@ export class RegisterScene extends Phaser.Scene {
         sfx.keypad();
         feed();
         drawPaper(paper, x, y, w, 5 + (i + 1) * RECEIPT_LINE_H, false);
-        receiptLabel(this, x + 3, y + 3 + i * RECEIPT_LINE_H, fits ? p.name : p.short, COLOURS.ink);
-        receiptLabel(this, x + w - 3, y + 3 + i * RECEIPT_LINE_H, price, COLOURS.ink, 'right');
+        this.keep(receiptLabel(this, x + 3, y + 3 + i * RECEIPT_LINE_H, fits ? p.name : p.short, COLOURS.ink));
+        this.keep(receiptLabel(this, x + w - 3, y + 3 + i * RECEIPT_LINE_H, price, COLOURS.ink, 'right'));
       });
     });
 
@@ -187,7 +196,7 @@ export class RegisterScene extends Phaser.Scene {
       at(time, () => {
         feed();
         drawPaper(paper, x, y, w, ruleY - y + 14, false);
-        this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
+        this.keep(this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0));
         row(ruleY + 3, 'CASH TOTAL', formatCents(this.total));
       });
       time += BEFORE_TENDER_MS;
@@ -204,7 +213,7 @@ export class RegisterScene extends Phaser.Scene {
         sfx.coin();
         feed();
         drawPaper(paper, x, y, w, finalHeight, true);
-        this.add.rectangle(x + 3, ruleY + 25, w - 6, 1, COLOURS.ink).setOrigin(0);
+        this.keep(this.add.rectangle(x + 3, ruleY + 25, w - 6, 1, COLOURS.ink).setOrigin(0));
         this.highlightRow(x, ruleY + 27, w, 'CHANGE DUE', formatCents(this.tendered - this.total));
       });
     } else {
@@ -212,7 +221,7 @@ export class RegisterScene extends Phaser.Scene {
         sfx.coin();
         feed();
         drawPaper(paper, x, y, w, finalHeight, true);
-        this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
+        this.keep(this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0));
         this.highlightRow(x, ruleY + 2, w, 'TOTAL', formatCents(this.total));
       });
       time += BEFORE_TENDER_MS;
@@ -229,10 +238,15 @@ export class RegisterScene extends Phaser.Scene {
     });
   }
 
+  private keep<T extends Phaser.GameObjects.GameObject>(part: T): T {
+    this.receiptParts.push(part);
+    return part;
+  }
+
   /** The number to focus on: a gold bar across the receipt with the amount a little larger. */
   private highlightRow(x: number, y: number, w: number, name: string, value: string) {
     const barW = w - 4;
-    const bar = this.add.container(x + 2 + barW / 2, y + HIGHLIGHT_H / 2);
+    const bar = this.keep(this.add.container(x + 2 + barW / 2, y + HIGHLIGHT_H / 2));
     const left = -barW / 2;
     bar.add(this.add.rectangle(left, -HIGHLIGHT_H / 2, barW, HIGHLIGHT_H, HIGHLIGHT_GOLD).setOrigin(0));
     bar.add(label(this, left + 2, -3, name, COLOURS.ink));
@@ -293,29 +307,25 @@ export class RegisterScene extends Phaser.Scene {
     addButton(tillKey(this, giveX, actionsY, L.W - giveX - 4, BUTTONS.actionH, 'GIVE', () => this.giveChange(), KEYS.green, null));
   }
 
-  /** A stack of three bills standing on end in its slot, filling it across, cut off by the tray, with a band to carry its value. */
+  /** A stack of three bills standing on end in its slot, most of their length showing above the tray, with a band to carry their value. */
   private drawerBill(cents: number, col: number, d: ReturnType<typeof drawerLayout>) {
-    const stackW = STACK_BEHIND * STACK_STEP;
-    const billW = d.slotW - BILL_MARGIN * 2 - stackW;
-    const billLength = Math.round(billW * BILL_ASPECT);
-    const left = d.slotX(col) + BILL_MARGIN;
+    const { w, h } = drawerBillSize();
+    const stackW = STACK_BEHIND * BILL_STACK_STEP;
+    const left = d.slotX(col) + Math.floor((d.slotW - w - stackW) / 2);
     const top = d.billTop + 2 + stackW;
-    const key = `bill_${cents}_up`;
-    const frame = this.textures.get(key).getSourceImage();
-    const scaleY = billLength / frame.height;
+    const bottom = d.billTop + d.billH;
     // The ones behind peek out above and to the right, a little darker.
     const layers = Array.from({ length: STACK_BEHIND + 1 }, (_, i) => STACK_BEHIND - i).map((back) => {
-      const y = top - back * STACK_STEP;
-      const shown = Math.min(billLength, d.billTop + d.billH - y);
-      const bill = this.add.image(left + back * STACK_STEP, y, key).setOrigin(0).setDisplaySize(billW, billLength);
-      bill.setCrop(0, 0, frame.width, shown / scaleY);
+      const y = top - back * BILL_STACK_STEP;
+      const bill = billImage(this, left + back * BILL_STACK_STEP, y, cents);
+      bill.setCrop(0, 0, bill.width, Math.min(h, bottom - y) * L.renderScale);
       if (back > 0) bill.setTint(back === 1 ? 0xc4c4c4 : 0x9c9c9c);
       return bill;
     });
-    const shownH = Math.min(billLength, d.billTop + d.billH - top);
-    const cx = left + Math.floor(billW / 2);
+    const shownH = Math.min(h, bottom - top);
+    const cx = left + Math.floor(w / 2);
     const bandY = top + Math.floor(shownH * 0.55) - Math.floor(BAND_H / 2);
-    const bandW = Math.min(d.slotW - 2, billW + 4);
+    const bandW = Math.min(d.slotW - 2, w + 4);
     const { fill, edge } = BILL_BANDS[cents];
     const band = this.add.rectangle(cx, bandY, bandW, BAND_H, fill).setOrigin(0.5, 0).setStrokeStyle(1, edge);
     const amount = label(this, cx, bandY + 3, denominationLabel(cents), COLOURS.ink, 'center');
@@ -325,7 +335,7 @@ export class RegisterScene extends Phaser.Scene {
   /** Three coins in their cup, all the same size, centred under their value. */
   private drawerCoin(cents: number, col: number, d: ReturnType<typeof drawerLayout>) {
     const cx = d.slotX(col) + Math.floor(d.slotW / 2);
-    const key = moneyArt(cents);
+    const key = `coin_${cents}`;
     const natural = this.textures.get(key).getSourceImage().height;
     const areaTop = d.coinTop + COIN_LABEL_TOP + COIN_LABEL_H;
     const areaH = d.coinTop + d.coinH - 2 - areaTop;
@@ -369,7 +379,7 @@ export class RegisterScene extends Phaser.Scene {
     tenderLayout(bills.length).forEach(({ x, y }, i) => {
       const cents = bills[i];
       const col = DENOMINATIONS.indexOf(cents as (typeof DENOMINATIONS)[number]);
-      const bill = this.add.image(x, y, `bill_${cents}_up`).setOrigin(0).setDisplaySize(TENDER_BILL_W, TENDER_BILL_H).setDepth(150);
+      const bill = billImage(this, x, y, cents, true).setDepth(150);
       this.tweens.add({
         targets: bill,
         x: d.slotX(col) + Math.floor((d.slotW - TENDER_BILL_W) / 2),
@@ -386,21 +396,32 @@ export class RegisterScene extends Phaser.Scene {
     });
   }
 
+  /** A piece of change as it sits on the counter: a small upright bill, or a coin about as wide. */
+  private deskMoney(cents: number, x: number, y: number): { sprite: Phaser.GameObjects.Image; scale: number } {
+    if (cents >= 100) {
+      const sprite = billImage(this, x, y, cents, true).setOrigin(0.5);
+      return { sprite, scale: sprite.scale };
+    }
+    const key = `coin_${cents}`;
+    const scale = DESK_COIN / this.textures.get(key).getSourceImage().height;
+    return { sprite: this.add.image(x, y, key).setScale(scale), scale };
+  }
+
   private addToDesk(cents: number, fromX: number, fromY: number) {
     if (this.finished || !this.ready) return;
     if (!this.tenderTaken) this.takeTender();
     (cents >= 100 ? sfx.bill : sfx.coin)();
-    const sprite = this.add.image(0, 0, moneyArt(cents)).setScale(MONEY_SCALE);
-    const hit = this.add.rectangle(0, 0, Math.max(sprite.displayWidth, 20), Math.max(sprite.displayHeight, 18), 0xffffff, 0).setInteractive({ useHandCursor: true });
-    const piece: DeskPiece = { cents, sprite, hit, parts: [sprite, hit] };
+    const { sprite, scale } = this.deskMoney(cents, 0, 0);
+    const hit = this.add.rectangle(0, 0, Math.max(sprite.displayWidth, 10), TENDER_BILL_H, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    const piece: DeskPiece = { cents, sprite, hit, scale, parts: [sprite, hit] };
     hit.on('pointerup', () => this.removePiece(piece));
     this.desk.push(piece);
     this.refreshDesk();
     // It flies up from the drawer and lands with a small bounce.
-    const flying = this.add.image(fromX, fromY, moneyArt(cents)).setScale(MONEY_SCALE).setDepth(200);
+    const flying = this.deskMoney(cents, fromX, fromY).sprite.setDepth(200);
     this.tweens.add({ targets: flying, x: sprite.x, y: sprite.y, duration: FLY_MS, ease: 'Quad.easeOut', onComplete: () => flying.destroy() });
-    sprite.setScale(MONEY_SCALE * 1.3);
-    this.tweens.add({ targets: sprite, scale: MONEY_SCALE, duration: 110, delay: FLY_MS, ease: 'Quad.easeOut' });
+    sprite.setScale(scale * 1.3);
+    this.tweens.add({ targets: sprite, scale, duration: 110, delay: FLY_MS, ease: 'Quad.easeOut' });
   }
 
   private removePiece(piece: DeskPiece) {
@@ -434,37 +455,22 @@ export class RegisterScene extends Phaser.Scene {
     const given = this.given();
     this.showFigure(given, due);
 
-    const deskLeft = 84;
-    const rowOne = { y: L.counterTop + 11, right: L.W - 56 };
-    const rowTwo = { y: L.counterTop + 25, right: L.W - 56 };
-    const width = (piece: DeskPiece) => piece.sprite.width * MONEY_SCALE;
-    const fitRow = (pieces: DeskPiece[], row: { y: number; right: number }, baseDepth: number) => {
-      if (pieces.length === 0) return;
-      const room = row.right - deskLeft;
-      const natural = pieces.reduce((sum, p) => sum + width(p) + 1, -1);
-      const squeeze = natural > room ? (natural - room) / Math.max(pieces.length - 1, 1) : 0;
-      let x = deskLeft;
-      pieces.forEach((piece, i) => {
-        const cx = Math.round(x + width(piece) / 2);
-        piece.sprite.setPosition(cx, row.y).setDepth(baseDepth + i * 3);
-        piece.hit.setPosition(cx, row.y).setDepth(baseDepth + i * 3 + 2);
-        x += width(piece) + 1 - squeeze;
-      });
-    };
-    const firstRow: DeskPiece[] = [];
-    const secondRow: DeskPiece[] = [];
-    let used = 0;
-    const room = rowOne.right - deskLeft;
-    this.desk.forEach((piece) => {
-      if (secondRow.length === 0 && used + width(piece) <= room) {
-        firstRow.push(piece);
-        used += width(piece) + 1;
-      } else {
-        secondRow.push(piece);
-      }
+    // One row of upright bills and coins, each overlapping the last a little, squeezed closer when there are many.
+    const right = L.W - 58;
+    const width = (piece: DeskPiece) => (piece.cents >= 100 ? TENDER_BILL_W : DESK_COIN);
+    const natural = this.desk.reduce((sum, p) => sum + width(p) - DESK_OVERLAP, DESK_OVERLAP);
+    const squeeze = natural > right - DESK_LEFT ? (natural - (right - DESK_LEFT)) / Math.max(this.desk.length - 1, 1) : 0;
+    const top = L.counterTop + 3;
+    let x = DESK_LEFT;
+    this.desk.forEach((piece, i) => {
+      const w = width(piece);
+      const cx = x + w / 2;
+      // Coins lie at the front of the counter, level with the bottom of the bills.
+      const cy = piece.cents >= 100 ? top + TENDER_BILL_H / 2 : top + TENDER_BILL_H - DESK_COIN / 2;
+      piece.sprite.setPosition(cx, cy).setDepth(10 + i * 3);
+      piece.hit.setPosition(cx, top + TENDER_BILL_H / 2).setSize(Math.max(w - DESK_OVERLAP - squeeze, 4), TENDER_BILL_H).setDepth(11 + i * 3);
+      x += w - DESK_OVERLAP - squeeze;
     });
-    fitRow(firstRow, rowOne, 10);
-    fitRow(secondRow, rowTwo, 100);
   }
 
   private giveChange() {
@@ -474,8 +480,8 @@ export class RegisterScene extends Phaser.Scene {
     const extra = result.status === 'over' ? result.extra : 0;
     const tip = this.settle(extra);
     sfx.sale();
-    if (extra > 0) this.finish(`OOPS! THAT'S ${formatCents(extra)} TOO MUCH`, OVER_INK, tip);
-    else this.finish(tip > 0 ? `A ${formatCents(tip)} TIP!` : 'PERFECT. THANKS!', SUCCESS_INK, tip);
+    if (extra > 0) this.finish(`OOPS! THAT'S ${formatCents(extra)} TOO MUCH. BYE!`, tip, extra);
+    else this.finish(tip > 0 ? `THANKS! HERE'S A ${formatCents(tip)} TIP.` : 'PERFECT. THANKS!', tip);
   }
 
   // ---- Card ---------------------------------------------------------------
@@ -525,6 +531,25 @@ export class RegisterScene extends Phaser.Scene {
     this.tweens.add({ targets: terminal, y: restY, duration: 280, ease: 'Back.easeOut' });
   }
 
+  /** Their card slides along the reader on the terminal's side, stripe first, then goes back to them. */
+  private swipeCard(then: () => void) {
+    const terminal = this.terminal;
+    if (!terminal) return then();
+    session.events.emit('card-taken');
+    const spot = cardSpot();
+    // In front of the terminal, its edge running down the reader on the right side.
+    const card = this.add.image(spot.x, spot.y, 'held_card');
+    const readerX = terminal.x + 32;
+    this.tweens.chain({
+      targets: card,
+      tweens: [
+        { x: readerX, y: terminal.y - 26, angle: 90, duration: 240, ease: 'Quad.easeOut' },
+        { y: terminal.y + 16, duration: 360, ease: 'Sine.easeInOut', onStart: () => sfx.swipe() },
+        { alpha: 0, x: spot.x, y: spot.y, angle: 0, duration: 260, delay: 150, ease: 'Quad.easeIn', onStart: then, onComplete: () => card.destroy() },
+      ],
+    });
+  }
+
   private removeTerminal(then: () => void) {
     if (!this.terminal) return then();
     sfx.putBack();
@@ -536,8 +561,11 @@ export class RegisterScene extends Phaser.Scene {
     if (key === 'OK') {
       if (!checkCard(this.total, this.entered)) return this.reject('WRONG AMOUNT');
       const tip = this.settle(0);
-      sfx.approved();
-      this.finish(tip > 0 ? `A ${formatCents(tip)} TIP!` : 'APPROVED. THANKS!', SUCCESS_INK, tip);
+      this.finished = true;
+      this.swipeCard(() => {
+        sfx.approved();
+        this.finish(tip > 0 ? `THANKS! I ADDED A ${formatCents(tip)} TIP.` : 'THANKS. SEE YOU!', tip);
+      });
       return;
     }
     if (key === 'CLR') this.entered = 0;
@@ -570,15 +598,16 @@ export class RegisterScene extends Phaser.Scene {
     return tip;
   }
 
-  private finish(text: string, color: number, tip: number) {
+  /** The receipt is done with, and the customer says goodbye in a bubble of their own. */
+  private finish(text: string, tip: number, overpaid = 0) {
     this.finished = true;
-    // The customer says it, so it appears beside them rather than down by the buttons.
-    session.events.emit('say', text, color);
-    this.time.delayedCall(this.terminal ? 800 : 1000, () => {
+    this.tweens.add({ targets: this.receiptParts, alpha: 0, duration: 150 });
+    session.events.emit('goodbye', text);
+    this.time.delayedCall(GOODBYE_MS, () => {
       this.removeTerminal(() => {
         session.sale = null;
         session.modal = false;
-        this.info.onDone(tip);
+        this.info.onDone(tip, overpaid);
         this.scene.stop();
       });
     });

@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
+import { createBills } from '../art/bills';
 import { createGameFont, loadGameFont } from '../art/font';
 import { CUSTOMER_LOOKS, createTextures } from '../art/textures';
 
-const BILL_CENTS = [100, 500, 1000, 2000];
-const MONEY_ART = [...BILL_CENTS.flatMap((c) => [`bill_${c}`, `bill_${c}_up`]), ...[5, 10, 25, 50].map((c) => `coin_${c}`)];
+const MONEY_ART = [5, 10, 25, 50].map((c) => `coin_${c}`);
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -22,9 +22,10 @@ export class BootScene extends Phaser.Scene {
   create() {
     void loadGameFont().then(() => {
       createGameFont(this);
-      // Money is shown shrunk to fit, at sizes that don't land on whole screen pixels, so it's smoothed rather than left blocky.
+      // Coins are shown shrunk to fit, at sizes that don't land on whole screen pixels, so they're smoothed rather than left blocky.
       for (const art of MONEY_ART) this.textures.get(art).setFilter(Phaser.Textures.FilterMode.LINEAR);
       createTextures(this);
+      createBills(this);
       this.scene.start('Shack');
     });
   }

@@ -119,10 +119,10 @@ export const ACTION_H = 36;
 export const PAYMENT_PANEL_H = 32;
 
 /** The customer's bills stand upright on the counter, small enough to fit its top. */
-export const TENDER_BILL_W = 13;
-export const TENDER_BILL_H = 30;
+export const TENDER_BILL_W = 12;
+export const TENDER_BILL_H = 28;
 const TENDER_LEFT = 86;
-const TENDER_STEP = 9;
+const TENDER_STEP = 8;
 
 /** The top-left corner of each of the customer's bills on the counter, fanned out and overlapping, squeezed closer when there are many. */
 export function tenderLayout(count: number): { x: number; y: number }[] {
@@ -143,7 +143,7 @@ export function drawerLayout() {
   const slotW = Math.floor((w - pad * 2 - divider * 3) / 4);
   const left = x + Math.floor((w - slotW * 4 - divider * 3) / 2);
   const inner = h - pad * 2 - divider;
-  const billH = Math.floor(inner * 0.56);
+  const billH = Math.floor(inner * 0.6);
   const coinH = inner - billH;
   const billTop = y + pad;
   const coinTop = billTop + billH + divider;
@@ -152,3 +152,21 @@ export function drawerLayout() {
     slotX: (col: number) => left + col * (slotW + divider),
   };
 }
+
+/** A bill's length over its width. */
+export const BILL_ASPECT = 2.35;
+/** Bills peek out behind each other in the drawer by this much, twice over. */
+export const BILL_STACK_STEP = 2;
+/** How much of a bill's length shows above the tray. */
+const BILL_SHOWN = 0.65;
+
+/** The size of the bills standing in the drawer: short enough that most of each one shows, and no wider than its slot allows. */
+export function drawerBillSize(): { w: number; h: number } {
+  const d = drawerLayout();
+  const shown = d.billH - 2 - BILL_STACK_STEP * 2;
+  const w = Math.min(d.slotW - 6 - BILL_STACK_STEP * 2, Math.round(shown / BILL_SHOWN / BILL_ASPECT));
+  return { w, h: Math.round(w * BILL_ASPECT) };
+}
+
+/** Where the customer's card waits on the counter. */
+export const cardSpot = () => ({ x: 98, y: L.counterTop + 16 });

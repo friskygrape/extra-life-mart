@@ -95,8 +95,9 @@ function drawPanels(c: Ctx, x: number, y: number, w: number, h: number) {
   }
 }
 
-/** Height of the name plate along the bottom of each shelf, including the gap under it. */
-export const SHELF_LABEL_H = 14;
+/** Height of the name plate along the bottom of each shelf, including the gap under it. It holds two lines. */
+export const SHELF_LABEL_H = 20;
+const PLATE_H = SHELF_LABEL_H - 3;
 
 /** Where the parts of a shelf sit, measured from its corner. */
 function nicheBounds(w: number, h: number) {
@@ -131,10 +132,10 @@ function drawShelfCubby(c: Ctx, x: number, y: number, w: number, h: number) {
   for (let i = 0; i < 8; i++) rect(c, '#f9e6b7', x + n.backLeft - i * 0.6, y + n.floor + i * 0.5, n.backWidth + i * 1.2, 0.5);
   // Name plate
   const plateY = y + h - SHELF_LABEL_H;
-  rounded(c, STEEL_DARK, x + 1, plateY, w - 2, 11);
+  rounded(c, STEEL_DARK, x + 1, plateY, w - 2, PLATE_H);
   rect(c, STEEL_LIGHT, x + 2, plateY + 0.5, w - 4, 1);
-  rect(c, '#fbeed5', x + 2, plateY + 1.5, w - 4, 8);
-  rect(c, STEEL, x + 2, plateY + 9.5, w - 4, 0.5);
+  rect(c, '#fbeed5', x + 2, plateY + 1.5, w - 4, PLATE_H - 3);
+  rect(c, STEEL, x + 2, plateY + PLATE_H - 1.5, w - 4, 0.5);
 }
 
 /** Left edge of a shelf column, so four columns always span the full width. */
@@ -195,10 +196,10 @@ function drawBrokenCubby(c: Ctx, x: number, w: number, h: number, seed: number) 
   }
   // A blank, grubby name plate
   const plateY = h - SHELF_LABEL_H;
-  rounded(c, '#30373c', x + 1, plateY, w - 2, 11);
+  rounded(c, '#30373c', x + 1, plateY, w - 2, PLATE_H);
   rect(c, '#6b7378', x + 2, plateY + 0.5, w - 4, 1);
-  rect(c, '#8e897e', x + 2, plateY + 1.5, w - 4, 8);
-  speckle(c, rng, x + 2, plateY + 1.5, w - 4, 8, ['#76716a', '#a19c90'], 0.12);
+  rect(c, '#8e897e', x + 2, plateY + 1.5, w - 4, PLATE_H - 3);
+  speckle(c, rng, x + 2, plateY + 1.5, w - 4, PLATE_H - 3, ['#76716a', '#a19c90'], 0.12);
 }
 
 /** How far each door swings. These are their widths once open, in game pixels. */

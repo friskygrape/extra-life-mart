@@ -35,11 +35,23 @@ export function getProduct(id: string): Product {
   return product;
 }
 
-/** The name to print on a shelf label: the longest of its full name, first word and short name that fits beside the count. */
-export function shelfLabelName(product: Pick<Product, 'name' | 'short'>, qty: number, plateWidth: number): string {
-  const room = plateWidth - tinyTextWidth(String(qty)) - 2;
-  const firstWord = product.name.split(' ')[0];
-  return [product.name, firstWord].find((name) => tinyTextWidth(name) <= room) ?? product.short;
+/**
+ * The name to print on a shelf label, over one or two lines, with the count on the right of one of them.
+ * The full name is kept whenever it fits, broken between words. The short name is only for names that can't fit at all.
+ */
+export function shelfLabelLines(product: Pick<Product, 'name' | 'short'>, qty: number, plateWidth: number): { lines: string[]; countLine: number } {
+  const besideCount = plateWidth - tinyTextWidth(String(qty)) - 2;
+  const fits = (text: string, room: number) => tinyTextWidth(text) <= room;
+  if (fits(product.name, besideCount)) return { lines: [product.name], countLine: 0 };
+  const words = product.name.split(' ');
+  // The last option keeps the whole name on the first line, with the count alone beneath it.
+  const splits = Array.from({ length: words.length }, (_, i) => [words.slice(0, i + 1).join(' '), words.slice(i + 1).join(' ')]);
+  // The count goes on whichever line leaves it room, preferring the first.
+  for (const countLine of [0, 1]) {
+    const split = splits.find(([a, b]) => fits(a, countLine === 0 ? besideCount : plateWidth) && fits(b, countLine === 1 ? besideCount : plateWidth));
+    if (split) return { lines: split, countLine };
+  }
+  return { lines: [product.short], countLine: 0 };
 }
 
 export const SHELF_CAPACITY = 12;

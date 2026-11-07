@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { getProduct, shelfLabelName } from '../data/products';
+import { getProduct, shelfLabelLines } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
@@ -20,7 +20,8 @@ import { onboardingStep, type OnboardingStep } from '../logic/onboarding';
 import { saleTotal } from '../logic/checkout';
 import { customerTender, formatCents, tenderBills } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
-import { L, TENDER_BILL_H, TENDER_BILL_W, bubbleW, bubbleX, bubbleY, portraitX, receiptHeight, tenderLayout } from '../layout';
+import { L, bubbleW, bubbleX, bubbleY, cardSpot, portraitX, receiptHeight, tenderLayout } from '../layout';
+import { billImage } from '../art/bills';
 import { session } from '../session';
 import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel, titleLabel } from '../ui';
 
@@ -112,8 +113,6 @@ const tipBarX = () => Math.max(REGISTER_RIGHT + 2, portraitX() - TIP_BAR_W / 2);
 const tableItemX = (i: number) => 92 + i * 21;
 const tableY = () => L.counterTop + Math.floor((L.counterBottom - L.counterTop) / 2) - 1;
 /** Cash or card lands right beside the register, in front of the customer. */
-const propX = () => 98;
-const propY = () => L.counterTop + 16;
 const boxX = () => L.W - 74;
 const slotLeft = (slot: ShelfSlot) => columnX(slot.col);
 const slotWidth = (slot: ShelfSlot) => columnX(slot.col + 1) - columnX(slot.col);
@@ -172,6 +171,8 @@ export class ShackScene extends Phaser.Scene {
   private heldCard!: Phaser.GameObjects.Image;
   private bubbleLines: { destroy(): void }[] = [];
   private spoken = '';
+  /** What they say as they leave, in a bubble of its own. */
+  private goodbye = '';
   private spokenColour: number = COLOURS.ink;
   private slotArt = new Map<string, Phaser.GameObjects.GameObject[]>();
   private rowArt: Phaser.GameObjects.GameObject[] = [];
@@ -292,7 +293,7 @@ export class ShackScene extends Phaser.Scene {
       this.setShelfNoteVisible(false);
     });
     this.heldMoney = this.add.container(0, 0).setDepth(5.1).setVisible(false);
-    this.heldCard = this.add.image(propX(), propY(), 'held_card').setDepth(5.1).setVisible(false);
+    this.heldCard = this.add.image(cardSpot().x, cardSpot().y, 'held_card').setDepth(5.1).setVisible(false);
 
     // A little past the top edge, so rounding can't leave a sliver of the beach showing.
     this.add.image(0, -4, 'hud_bar').setOrigin(0).setDepth(6);
@@ -328,6 +329,14 @@ export class ShackScene extends Phaser.Scene {
       if (this.current) this.showPayment(this.current);
     });
     // The payment screen takes their cash into the drawer, flying its own copies of these bills down.
+    session.events.on('card-taken', () => {
+      this.tweens.killTweensOf(this.heldCard);
+      this.heldCard.setVisible(false);
+    });
+    session.events.on('goodbye', (text: string) => {
+      this.goodbye = text;
+      this.renderBubble();
+    });
     session.events.on('tender-taken', () => {
       this.tweens.killTweensOf(this.heldMoney);
       this.heldMoney.setVisible(false);
@@ -612,9 +621,11 @@ export class ShackScene extends Phaser.Scene {
       const labelY = y + L.rowH - SHELF_LABEL_H;
       if (shelf.productId && shelf.qty > 0) {
         art.push(...this.shelfStock(shelf.productId, shelf.qty, x, w, labelY - 1));
-        const name = shelfLabelName(getProduct(shelf.productId), shelf.qty, w - 6);
-        art.push(tinyLabel(this, x + 3, labelY + 3, name, COLOURS.ink).setDepth(6));
-        art.push(tinyLabel(this, x + w - 3, labelY + 3, String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
+        const { lines, countLine } = shelfLabelLines(getProduct(shelf.productId), shelf.qty, w - 6);
+        // Two lines fill the plate; a single line sits in its middle.
+        const lineY = (i: number) => labelY + (lines.length === 1 ? 6 : 3 + i * 7);
+        lines.forEach((line, i) => art.push(tinyLabel(this, x + 3, lineY(i), line, COLOURS.ink).setDepth(6)));
+        art.push(tinyLabel(this, x + w - 3, lineY(countLine), String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
       } else {
         art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - SHELF_LABEL_H - 7) / 2), '+', SHELF_PLUS, 'center').setDepth(6));
       }
@@ -979,13 +990,13 @@ export class ShackScene extends Phaser.Scene {
     if (customer.wants.length === 0) return;
     const held = customer.paidByCash ? this.heldMoney : this.heldCard;
     this.tweens.killTweensOf(held);
-    let restY = propY();
+    let restY = cardSpot().y;
     if (customer.paidByCash) {
       // The bills they actually pay with, largest first.
       this.heldMoney.removeAll(true);
       const bills = tenderBills(customer.tender?.amount ?? 0);
       tenderLayout(bills.length).forEach(({ x, y }, i) => {
-        this.heldMoney.add(this.add.image(x, y, `bill_${bills[i]}_up`).setOrigin(0).setDisplaySize(TENDER_BILL_W, TENDER_BILL_H));
+        this.heldMoney.add(billImage(this, x, y, bills[i], true));
       });
       restY = 0;
     }
@@ -1003,6 +1014,7 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private dismiss() {
+    this.goodbye = '';
     this.hidePayment();
     this.current = null;
     session.wants = null;
@@ -1052,6 +1064,17 @@ export class ShackScene extends Phaser.Scene {
       box.setVisible(true);
       tail.setPosition(bubbleX() + 2, bottom - 3).setVisible(showTail);
     };
+
+    // After paying, the list and receipt are gone, leaving only their goodbye.
+    if (this.goodbye) {
+      this.bubble.setVisible(false);
+      this.bubbleTail.setVisible(false);
+      const top = bubbleY();
+      put(top + 4, customer.name, NAME_INK, titleLabel);
+      const said = put(top + 15, this.goodbye, COLOURS.ink);
+      place(this.speech, this.speechTail, top, top + 15 + said.height + 3, top + 12);
+      return;
+    }
 
     // First they say hello, with their name at the top
     if (customer.greeting !== null) {
@@ -1130,12 +1153,12 @@ export class ShackScene extends Phaser.Scene {
       total: charged,
       paidByCash: customer.paidByCash,
       tendered: customer.paidByCash ? customer.tender.amount : 0,
-      onDone: (tip: number) => {
+      onDone: (tip: number, overpaid: number) => {
         this.tearReceipt();
         this.setDeskClear(false);
         this.clearTable();
         this.dismiss();
-        this.floatMoney(charged + tip);
+        this.floatMoney(charged + tip - overpaid);
         this.refreshStars();
         // Saved until now, so the first-day tip can't appear in the middle of a sale.
         if (this.soldOutPending) this.soldOutShelf = this.soldOutPending;
@@ -1158,7 +1181,7 @@ export class ShackScene extends Phaser.Scene {
   }
 
   private floatMoney(total: number) {
-    const t = label(this, 110, tableY(), `+${formatCents(total)}`, 0x1f7a5a, 'center').setDepth(9);
+    const t = label(this, 110, tableY(), `${total < 0 ? '' : '+'}${formatCents(total)}`, total < 0 ? COLOURS.red : 0x1f7a5a, 'center').setDepth(9);
     this.tweens.add({ targets: t, y: tableY() - 15, alpha: 0, duration: 1100, delay: 300, onComplete: () => t.destroy() });
   }
 

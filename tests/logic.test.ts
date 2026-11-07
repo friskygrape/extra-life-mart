@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calendarHeading } from '../src/logic/calendar';
 import { flickerSteps, nextFlickerSeconds } from '../src/logic/flicker';
-import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelName } from '../src/data/products';
+import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
 import { tinyTextWidth } from '../src/art/fontMetrics';
 import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
@@ -604,20 +604,23 @@ describe('shelf labels', () => {
   // The narrowest shelf is 54 game pixels wide, leaving 48 inside its plate.
   const narrowest = 48;
 
-  it('keep the full name when it fits', () => {
-    expect(shelfLabelName(getProduct('chips'), 12, 80)).toBe('CRUNCH CHIPS');
-    expect(shelfLabelName(getProduct('icepop'), 12, narrowest)).toBe('ICE POP');
+  it('keep the full name on one line when it fits', () => {
+    expect(shelfLabelLines(getProduct('chips'), 12, 80)).toEqual({ lines: ['CRUNCH CHIPS'], countLine: 0 });
+    expect(shelfLabelLines(getProduct('icepop'), 12, narrowest)).toEqual({ lines: ['ICE POP'], countLine: 0 });
   });
 
-  it('fall back to the first word on narrow shelves', () => {
-    expect(shelfLabelName(getProduct('chips'), 12, narrowest)).toBe('CRUNCH');
-    expect(shelfLabelName(getProduct('coconut'), 12, narrowest)).toBe('COCO');
+  it('break the full name over two lines on narrow shelves', () => {
+    expect(shelfLabelLines(getProduct('chips'), 12, narrowest)).toEqual({ lines: ['CRUNCH', 'CHIPS'], countLine: 0 });
   });
 
-  it('always fit beside a two-digit count, even on the narrowest shelf', () => {
+  it('show every full name on the narrowest shelf, with room for a two-digit count', () => {
     for (const p of PRODUCTS) {
-      const shown = shelfLabelName(p, SHELF_CAPACITY, narrowest);
-      expect(tinyTextWidth(shown) + 2 + tinyTextWidth(String(SHELF_CAPACITY))).toBeLessThanOrEqual(narrowest);
+      const { lines, countLine } = shelfLabelLines(p, SHELF_CAPACITY, narrowest);
+      expect(lines.join(' ').trim()).toBe(p.name);
+      lines.forEach((line, i) => {
+        const count = i === countLine ? 2 + tinyTextWidth(String(SHELF_CAPACITY)) : 0;
+        expect(tinyTextWidth(line) + count).toBeLessThanOrEqual(narrowest);
+      });
     }
   });
 });
