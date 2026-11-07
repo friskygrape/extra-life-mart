@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createBills } from '../art/bills';
+import { BILL_CENTS, billSource, createBills } from '../art/bills';
 import { createGameFont, loadGameFont } from '../art/font';
 import { CUSTOMER_LOOKS, createTextures } from '../art/textures';
 
@@ -16,6 +16,7 @@ export class BootScene extends Phaser.Scene {
       this.load.image(art, `shop/${art}.png`);
     }
     for (const art of MONEY_ART) this.load.image(art, `money/${art}.png`);
+    for (const cents of BILL_CENTS) this.load.image(billSource(cents), `money/bill_${cents}.png`);
     for (let i = 0; i < CUSTOMER_LOOKS; i++) this.load.image(`cust_${i}`, `customers/c${i}.png`);
   }
 
