@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BIG_FONT_KEY, BIG_TITLE_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY, TITLE_FONT_KEY } from './art/font';
+import { AMOUNT_FONT_KEY, BIG_FONT_KEY, BIG_TITLE_FONT_KEY, FONT_KEY, TEXT_SIZE, TINY_FONT_KEY, TITLE_FONT_KEY } from './art/font';
 import { sfx } from './audio';
 import { ACTION_H, L } from './layout';
 
@@ -39,6 +39,11 @@ export function label(scene: Phaser.Scene, x: number, y: number, text: string, c
 /** The same as label, in the small size. */
 export function tinyLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
   return textIn(TINY_FONT_KEY, scene, x, y, text, color, align);
+}
+
+/** The same as label, a little larger: for the number to work from on a receipt. */
+export function amountLabel(scene: Phaser.Scene, x: number, y: number, text: string, color = COLOURS.white, align: Align = 'left'): Phaser.GameObjects.BitmapText {
+  return textIn(AMOUNT_FONT_KEY, scene, x, y, text, color, align);
 }
 
 /** The same as label, at double size. */

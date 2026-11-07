@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { L } from '../layout';
-import { BIG_STYLE, BIG_TITLE_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, TITLE_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
+import { AMOUNT_STYLE, BIG_STYLE, BIG_TITLE_STYLE, FONT_FAMILY, MAIN_STYLE, TINY_STYLE, TITLE_STYLE, charAdvance, digitInset, fontPx, type TextStyle } from './fontMetrics';
 
 export const FONT_KEY = 'text';
 export const TINY_FONT_KEY = 'text_tiny';
+export const AMOUNT_FONT_KEY = 'text_amount';
 export const BIG_FONT_KEY = 'text_big';
 export const TITLE_FONT_KEY = 'text_title';
 export const BIG_TITLE_FONT_KEY = 'text_big_title';
@@ -88,6 +89,7 @@ function buildFont(scene: Phaser.Scene, key: string, style: TextStyle, size: num
 export function createGameFont(scene: Phaser.Scene): void {
   buildFont(scene, FONT_KEY, MAIN_STYLE, TEXT_SIZE);
   buildFont(scene, TINY_FONT_KEY, TINY_STYLE, TEXT_SIZE);
+  buildFont(scene, AMOUNT_FONT_KEY, AMOUNT_STYLE, TEXT_SIZE);
   buildFont(scene, BIG_FONT_KEY, BIG_STYLE, TEXT_SIZE);
   buildFont(scene, TITLE_FONT_KEY, TITLE_STYLE, TEXT_SIZE);
   buildFont(scene, BIG_TITLE_FONT_KEY, BIG_TITLE_STYLE, TEXT_SIZE);

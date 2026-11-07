@@ -162,6 +162,7 @@ export interface TextStyle {
 export const MAIN_STYLE: TextStyle = { weight: REGULAR_WEIGHT, capPx: 7, baseline: 7.5, height: 9, lineHeight: 10, tracking: 0 };
 export const TITLE_STYLE: TextStyle = { ...MAIN_STYLE, weight: BOLD_WEIGHT };
 export const TINY_STYLE: TextStyle = { weight: REGULAR_WEIGHT, capPx: 5, baseline: 5.5, height: 6.5, lineHeight: 7, tracking: 0.5 };
+export const AMOUNT_STYLE: TextStyle = { weight: REGULAR_WEIGHT, capPx: 10, baseline: 10.7, height: 13, lineHeight: 14, tracking: 0 };
 export const BIG_STYLE: TextStyle = { weight: REGULAR_WEIGHT, capPx: 14, baseline: 15, height: 18, lineHeight: 20, tracking: 0 };
 export const BIG_TITLE_STYLE: TextStyle = { ...BIG_STYLE, weight: BOLD_WEIGHT };
 

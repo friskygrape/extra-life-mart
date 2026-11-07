@@ -3,12 +3,12 @@ import { textWidth } from '../art/fontMetrics';
 import { TERMINAL_DIGITS, drawerMoneySizes } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
-import { L, PAYMENT_PANEL_H, bubbleW, bubbleX, receiptHeight } from '../layout';
+import { L, PAYMENT_PANEL_H, RECEIPT_LINE_H, bubbleW, bubbleX, receiptHeight } from '../layout';
 import { checkCard, checkChange, completeSale } from '../logic/checkout';
 import { DENOMINATIONS, formatCents } from '../logic/money';
 import { settleService } from '../logic/reputation';
 import { session } from '../session';
-import { BUTTONS, COLOURS, bigLabel, button, drawPaper, label, tinyLabel } from '../ui';
+import { BUTTONS, COLOURS, amountLabel, bigLabel, button, drawPaper, label, tinyLabel } from '../ui';
 
 interface RegisterData {
   items: string[];
@@ -25,14 +25,13 @@ const SUCCESS_INK = 0x0b6b3a;
 const OVER_INK = 0x9a5b00;
 const MAX_RECEIPT_LINES = 4;
 const RECEIPT_MIN_W = 116;
-const HIGHLIGHT_H = 18;
+const HIGHLIGHT_H = 15;
 const HIGHLIGHT_GOLD = 0xffc65c;
 const PRINT_LINE_MS = 70;
-/** The beats of the reveal: the money lands, the receipt fills in, then the controls come up. */
+/** The beats of the reveal: the money lands and the receipt fills in, with the controls up from the start. */
 const BEFORE_TENDER_MS = 250;
 const NEXT_LINE_MS = 300;
-const BEFORE_CONTROLS_MS = 250;
-const SLIDE_MS = 240;
+const SLIDE_MS = 160;
 const PANEL_MESSAGE_MS = 1300;
 const LIFT = 3;
 const FLY_MS = 130;
@@ -57,7 +56,7 @@ export class RegisterScene extends Phaser.Scene {
   private desk: DeskPiece[] = [];
   private entered = 0;
   private finished = false;
-  /** Controls ignore taps until the receipt has finished and they've come up. */
+  /** Controls ignore taps until the receipt has shown the number to work from. */
   private ready = false;
   private controls!: Phaser.GameObjects.Container;
   private panelName = '';
@@ -117,13 +116,14 @@ export class RegisterScene extends Phaser.Scene {
     }
   }
 
-  /** One thing at a time: the items print, the money lands, the number to work from appears, then the controls. */
+  /** The controls come straight up so the screen is never empty. Then the items print, the money lands, and the number to work from appears. */
   private reveal(items: string[], cash: boolean) {
     // Wide enough for the highlighted amount, leaning over the customer's shoulder on narrow screens.
     const w = Math.max(bubbleW(), RECEIPT_MIN_W);
     const x = Math.min(bubbleX(), L.W - 3 - w);
     const y = this.info.receiptTop;
     const lines = items.slice(0, MAX_RECEIPT_LINES);
+    this.tweens.add({ targets: this.controls, y: 0, duration: SLIDE_MS, ease: 'Quad.easeOut' });
     // The till feeds out its paper in step with the receipt on screen.
     const totalSteps = lines.length + (cash ? 3 : 1);
     let stepsDone = 0;
@@ -148,20 +148,20 @@ export class RegisterScene extends Phaser.Scene {
         const fits = textWidth(p.name) + textWidth(price) + 4 <= w - 6;
         sfx.keypad();
         feed();
-        drawPaper(paper, x, y, w, 5 + (i + 1) * 9, false);
-        label(this, x + 3, y + 3 + i * 9, fits ? p.name : p.short, COLOURS.ink);
-        label(this, x + w - 3, y + 3 + i * 9, price, COLOURS.ink, 'right');
+        drawPaper(paper, x, y, w, 5 + (i + 1) * RECEIPT_LINE_H, false);
+        label(this, x + 3, y + 3 + i * RECEIPT_LINE_H, fits ? p.name : p.short, COLOURS.ink);
+        label(this, x + w - 3, y + 3 + i * RECEIPT_LINE_H, price, COLOURS.ink, 'right');
       });
     });
 
-    const ruleY = y + 3 + lines.length * 9;
+    const ruleY = y + 3 + lines.length * RECEIPT_LINE_H;
     const finalHeight = receiptHeight(lines.length, cash);
     let time = lines.length * PRINT_LINE_MS;
 
     if (cash) {
       at(time, () => {
         feed();
-        drawPaper(paper, x, y, w, ruleY - y + 13, false);
+        drawPaper(paper, x, y, w, ruleY - y + 14, false);
         this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
         row(ruleY + 3, 'CASH TOTAL', formatCents(this.total));
       });
@@ -171,16 +171,16 @@ export class RegisterScene extends Phaser.Scene {
       at(time, () => {
         sfx.keypad();
         feed();
-        drawPaper(paper, x, y, w, ruleY - y + 22, false);
-        row(ruleY + 12, 'AMOUNT PAID', formatCents(this.tendered));
+        drawPaper(paper, x, y, w, ruleY - y + 25, false);
+        row(ruleY + 14, 'AMOUNT PAID', formatCents(this.tendered));
       });
       time += NEXT_LINE_MS;
       at(time, () => {
         sfx.coin();
         feed();
         drawPaper(paper, x, y, w, finalHeight, true);
-        this.add.rectangle(x + 3, ruleY + 21, w - 6, 1, COLOURS.ink).setOrigin(0);
-        this.highlightRow(x, ruleY + 23, w, ['CHANGE', 'DUE'], formatCents(this.tendered - this.total));
+        this.add.rectangle(x + 3, ruleY + 25, w - 6, 1, COLOURS.ink).setOrigin(0);
+        this.highlightRow(x, ruleY + 27, w, 'CHANGE DUE', formatCents(this.tendered - this.total));
       });
     } else {
       at(time, () => {
@@ -188,7 +188,7 @@ export class RegisterScene extends Phaser.Scene {
         feed();
         drawPaper(paper, x, y, w, finalHeight, true);
         this.add.rectangle(x + 3, ruleY, w - 6, 1, COLOURS.ink).setOrigin(0);
-        this.highlightRow(x, ruleY + 2, w, ['TOTAL'], formatCents(this.total));
+        this.highlightRow(x, ruleY + 2, w, 'TOTAL', formatCents(this.total));
       });
       time += BEFORE_TENDER_MS;
       at(time, () => {
@@ -198,33 +198,21 @@ export class RegisterScene extends Phaser.Scene {
       time += NEXT_LINE_MS;
     }
 
-    time += BEFORE_CONTROLS_MS;
     at(time, () => {
-      this.tweens.add({
-        targets: this.controls,
-        y: 0,
-        duration: SLIDE_MS,
-        ease: 'Quad.easeOut',
-        onComplete: () => {
-          this.ready = true;
-          session.servicePaused = false;
-        },
-      });
+      this.ready = true;
+      session.servicePaused = false;
     });
   }
 
-  /** The number to focus on: a gold bar across the receipt with the amount at double size. */
-  private highlightRow(x: number, y: number, w: number, names: string[], value: string) {
+  /** The number to focus on: a gold bar across the receipt with the amount a little larger. */
+  private highlightRow(x: number, y: number, w: number, name: string, value: string) {
     const barW = w - 4;
     const bar = this.add.container(x + 2 + barW / 2, y + HIGHLIGHT_H / 2);
     const left = -barW / 2;
     bar.add(this.add.rectangle(left, -HIGHLIGHT_H / 2, barW, HIGHLIGHT_H, HIGHLIGHT_GOLD).setOrigin(0));
-    names.forEach((name, i) => {
-      const nameY = names.length === 1 ? -4 : -8 + i * 8;
-      bar.add(label(this, left + 2, nameY, name, COLOURS.ink));
-    });
-    bar.add(bigLabel(this, barW / 2 - 2, -7, value, COLOURS.ink, 'right'));
-    bar.setScale(1.25);
+    bar.add(label(this, left + 2, -3, name, COLOURS.ink));
+    bar.add(amountLabel(this, barW / 2 - 2, -6, value, COLOURS.ink, 'right'));
+    bar.setScale(1.05);
     this.tweens.add({ targets: bar, scale: 1, duration: 200, ease: 'Back.easeOut' });
   }
 

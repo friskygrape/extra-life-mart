@@ -62,12 +62,14 @@ const REGISTER_RIGHT = 78;
 const REGISTER_ART_H = 72;
 const DISPLAY_X = 38;
 const DISPLAY_Y = 0;
-const PAPER_X = 20;
-const PAPER_W = 16;
-const PAPER_SLOT_Y = 28;
-/** The paper already sticking out of the till, and how much more a whole receipt feeds out. */
-const PAPER_RESTING_H = 14;
-const PAPER_FEED_H = 20;
+const PAPER_X = 22;
+const PAPER_TOP = 14;
+/** How much paper is out of the till: a little by default, and all of it once a receipt has printed. */
+const PAPER_FULL_H = 15;
+const PAPER_SHORT_H = 5;
+/** The paper leans over as it comes out, so its tip stays in the chute while it's short. */
+const PAPER_LEAN = 0.4;
+const PAPER_STEP_MS = 70;
 const BANNER_BG = 0x1b1d28;
 const DOORS_SHUT_DEPTH = 3;
 /** Once open, the doors stand behind the customers. */
@@ -155,7 +157,9 @@ export class ShackScene extends Phaser.Scene {
   private closedSign!: Phaser.GameObjects.BitmapText;
   private doorHint!: Phaser.GameObjects.BitmapText;
   private registerText!: Phaser.GameObjects.BitmapText;
-  private printedPaper!: Phaser.GameObjects.Graphics;
+  private paper!: Phaser.GameObjects.Image;
+  private paperOut = PAPER_SHORT_H;
+  private paperFeed: Phaser.Tweens.Tween | null = null;
   private portrait!: Phaser.GameObjects.Image;
   private bubble!: Phaser.GameObjects.Graphics;
   private bubbleTail!: Phaser.GameObjects.Image;
@@ -249,7 +253,8 @@ export class ShackScene extends Phaser.Scene {
     const registerTop = standBottom - REGISTER_ART_H;
     this.add.image(1 + DISPLAY_X, registerTop + DISPLAY_Y, 'register_display').setOrigin(0).setScale(0.5).setDepth(4.52);
     this.registerText = tinyLabel(this, 1 + DISPLAY_X + REGISTER_DISPLAY_W - 3, registerTop + DISPLAY_Y + Math.floor((REGISTER_DISPLAY_H - 7) / 2), '$0.00', REGISTER_GREEN, 'right').setDepth(4.6);
-    this.printedPaper = this.add.graphics({ x: 1 + PAPER_X, y: registerTop + PAPER_SLOT_Y }).setDepth(4.51);
+    this.paper = this.add.image(0, 0, 'register_paper').setOrigin(0).setScale(0.5).setDepth(4.51);
+    this.showPaper(PAPER_SHORT_H);
     const computerX = W - COMPUTER_W - 2;
     const computerY = computerTop();
     this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
@@ -715,34 +720,40 @@ export class ShackScene extends Phaser.Scene {
     this.registerText.setText(formatCents(saleTotal(session.table, this.current?.paidByCash ?? false)));
   }
 
-  /** Paper feeds out of the till, from none to a whole receipt, in step with the one on screen. */
-  private feedReceipt(fraction: number) {
-    const h = PAPER_RESTING_H + Math.round(PAPER_FEED_H * fraction);
-    const g = this.printedPaper;
-    this.tweens.killTweensOf(g);
-    g.clear().setAlpha(1).setY(this.paperRestY());
-    g.fillStyle(COLOURS.ink).fillRect(0, -h, PAPER_W, h);
-    g.fillStyle(COLOURS.paper).fillRect(1, -h + 1, PAPER_W - 2, h - 1);
-    g.fillStyle(0x9a9486);
-    for (let y = -h + 3; y < -2; y += 3) g.fillRect(3, y, y % 2 === 0 ? PAPER_W - 6 : PAPER_W - 9, 1);
+  /** Only what's come out of the slot shows, so its curled tip is always the first thing out. */
+  private showPaper(out: number) {
+    const shown = Math.round(out * 2) / 2;
+    const hidden = PAPER_FULL_H - shown;
+    this.paperOut = out;
+    this.paper
+      .setPosition(1 + PAPER_X - hidden * PAPER_LEAN, L.counterBottom - 6 - REGISTER_ART_H + PAPER_TOP + hidden)
+      .setCrop(0, 0, this.paper.width, shown * 2);
   }
 
-  private paperRestY() {
-    return L.counterBottom - 6 - REGISTER_ART_H + PAPER_SLOT_Y;
-  }
-
-  /** Torn off and gone once the sale is over or called off. */
-  private tearReceipt() {
-    const g = this.printedPaper;
-    this.tweens.killTweensOf(g);
-    this.tweens.add({
-      targets: g,
-      y: this.paperRestY() - 10,
-      alpha: 0,
-      duration: 320,
-      ease: 'Quad.easeOut',
-      onComplete: () => g.clear().setAlpha(1).setY(this.paperRestY()),
+  private feedPaperTo(out: number, duration: number, delay = 0) {
+    this.paperFeed?.stop();
+    this.paperFeed = this.tweens.addCounter({
+      from: this.paperOut,
+      to: out,
+      duration,
+      delay,
+      onUpdate: (tween) => this.showPaper(tween.getValue() ?? out),
     });
+  }
+
+  /** Paper feeds out of the till in step with the receipt on screen, from a short tip to its full length. */
+  private feedReceipt(fraction: number) {
+    this.feedPaperTo(PAPER_SHORT_H + (PAPER_FULL_H - PAPER_SHORT_H) * fraction, PAPER_STEP_MS);
+  }
+
+  /** Torn off once the sale is over or called off, leaving the tip of the next one. */
+  private tearReceipt() {
+    this.paperFeed?.stop();
+    const torn = this.add.image(this.paper.x, this.paper.y, 'register_paper').setOrigin(0).setScale(0.5).setDepth(4.51)
+      .setCrop(0, 0, this.paper.width, this.paperOut * 2);
+    this.tweens.add({ targets: torn, y: torn.y - 10, alpha: 0, duration: 320, ease: 'Quad.easeOut', onComplete: () => torn.destroy() });
+    this.showPaper(0);
+    this.feedPaperTo(PAPER_SHORT_H, 220, 260);
   }
 
   private clearTable() {

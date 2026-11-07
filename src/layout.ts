@@ -108,8 +108,10 @@ export const bubbleX = () => portraitX() + 27;
 export const bubbleY = () => Math.max(L.windowY + 8, L.counterTop - 88);
 export const bubbleW = () => Math.min(130, L.W - bubbleX() - 3);
 
-/** Height of a printed receipt with this many item lines. Its last row is highlighted, and cash adds Amount Paid. */
-export const receiptHeight = (lines: number, cash: boolean) => 26 + lines * 9 + (cash ? 22 : 0);
+/** Distance between lines on a printed receipt, the same as on the customer's order. */
+export const RECEIPT_LINE_H = 11;
+/** Height of a printed receipt with this many item lines. Its last row is highlighted, and cash adds its total and Amount Paid. */
+export const receiptHeight = (lines: number, cash: boolean) => 23 + lines * RECEIPT_LINE_H + (cash ? 25 : 0);
 
 /** Height of the buttons below the cash drawer. */
 export const ACTION_H = 36;
