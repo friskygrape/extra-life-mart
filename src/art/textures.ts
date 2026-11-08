@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { L, drawerLayout } from '../layout';
+import { createComputer } from './computer';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -64,10 +65,6 @@ function disc(c: Ctx, color: string, cx: number, cy: number, r: number) {
 /** Where the calendar and TV hang, just under the top bar. */
 export const wallTop = () => L.hudH + 6;
 
-/** The computer's full width, including the printer and mouse beside the monitor. */
-export const COMPUTER_SPRITE_W = 55;
-/** Where the monitor's centre sits inside the computer sprite. */
-export const MONITOR_CENTRE_X = 23;
 
 // Storefront colours, sampled from the mock-up
 const PANEL = '#70bfaa';
@@ -507,7 +504,7 @@ function drawShop(scene: Phaser.Scene) {
     rect(c, '#c98f50', 8, 19, 2, 1);
   });
 
-  drawComputer(scene);
+  createComputer(scene);
   drawTerminal(scene);
 }
 
@@ -528,85 +525,6 @@ export const TERMINAL_DIGITS = [
   { text: '0', x: 19, y: 45 },
 ];
 
-/** Grey monitor showing the shop screen, with a keyboard, mouse and receipt printer. */
-function drawComputer(scene: Phaser.Scene) {
-  canvasTexture(scene, 'computer', COMPUTER_SPRITE_W, 60, (c) => {
-    // Stand
-    rect(c, '#2e3138', 17, 33, 12, 5);
-    rect(c, '#44474f', 18, 33, 3, 4);
-    rounded(c, '#3a3d45', 12, 37, 22, 3);
-    rect(c, '#555861', 13, 37, 20, 1);
-
-    // Monitor
-    rounded(c, '#6c7078', 1, 1, 44, 32);
-    rect(c, '#a4a8ae', 2, 1, 42, 1);
-    rect(c, '#555860', 1, 29, 44, 3);
-    rect(c, '#2d3036', 3, 3, 40, 26);
-    rect(c, '#68d0ea', 4, 4, 38, 24);
-    rect(c, '#6ee04a', 36, 30, 2, 1);
-
-    // The screen's right side: blue, with SHOP in a brighter panel and a chart below
-    rect(c, '#2f62c0', 5, 5, 36, 22);
-    rect(c, '#2f8a48', 34, 5, 3, 2);
-    rect(c, '#d84a4a', 38, 5, 3, 2);
-    rect(c, '#3f7ce0', 15, 8, 26, 10);
-    rect(c, '#6ea4f0', 15, 8, 26, 1);
-    disc(c, '#60cc40', 21, 22, 3);
-    rect(c, '#f05878', 21, 19, 2, 1);
-    rect(c, '#f05878', 21, 20, 3, 1);
-    rect(c, '#f05878', 21, 21, 4, 1);
-    [[26, 20], [26, 22], [26, 24]].forEach(([lx, ly], i) => {
-      rect(c, ['#60cc40', '#f05878', '#60cc40'][i], lx, ly, 1, 1);
-      rect(c, '#9cd8f4', lx + 2, ly, i === 1 ? 9 : 12, 1);
-    });
-
-    // The screen's left side: the check-out list
-    rect(c, '#e0f4dc', 5, 5, 9, 22);
-    rect(c, '#2d3036', 6, 6, 7, 1);
-    rect(c, '#a8b4a8', 5, 8, 9, 1);
-    for (let ly = 10; ly < 20; ly += 2) {
-      rect(c, '#2f8a48', 6, ly, 1, 1);
-      rect(c, '#8a948c', 8, ly, ly % 4 === 0 ? 2 : 3, 1);
-      rect(c, '#8a948c', 12, ly, 1, 1);
-    }
-    rect(c, '#a8b4a8', 5, 22, 9, 1);
-    rect(c, '#e04848', 9, 24, 4, 2);
-
-    // Keyboard
-    rounded(c, '#464a50', 1, 42, 39, 16);
-    rect(c, '#6a6e74', 2, 42, 37, 1);
-    rect(c, '#2e3138', 2, 56, 37, 1);
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 12; col++) {
-        const kx = 3 + col * 3 - (row % 2);
-        if (kx < 3) continue;
-        rect(c, '#d4d6c4', kx, 44 + row * 3, 2, 2);
-        rect(c, '#9ca092', kx, 45 + row * 3, 2, 1);
-      }
-    }
-    rect(c, '#e8e8d8', 11, 53, 15, 2);
-    rect(c, '#b0b2a4', 11, 54, 15, 1);
-
-    // Mouse
-    rounded(c, '#4f5259', 43, 47, 7, 10);
-    rect(c, '#2d3036', 46, 48, 1, 3);
-    rect(c, '#73767d', 44, 47, 2, 1);
-    rect(c, '#383b42', 44, 55, 5, 1);
-
-    // Receipt printer in front of the monitor's corner
-    rect(c, '#f4efe0', 44, 23, 8, 8);
-    rect(c, '#807a6e', 45, 25, 5, 1);
-    rect(c, '#807a6e', 45, 27, 6, 1);
-    rect(c, '#807a6e', 45, 29, 4, 1);
-    rect(c, '#555860', 42, 31, 12, 11);
-    rect(c, '#7a7d84', 42, 31, 12, 1);
-    rect(c, '#23262e', 43, 33, 10, 1);
-    rect(c, '#6ee04a', 51, 38, 1, 1);
-
-    outline(c, COMPUTER_SPRITE_W, 60, INK);
-    rect(c, COUNTER_SHADOW, 2, 59, 38, 1);
-  });
-}
 
 /** Card terminal: a blue handset on its dock, with a card pushed into the bottom. */
 function drawTerminal(scene: Phaser.Scene) {

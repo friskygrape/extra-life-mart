@@ -1,5 +1,7 @@
 import { eventOnDay } from '../data/events';
+import { getProduct } from '../data/products';
 import { WEATHER } from '../data/weather';
+import { tagChoices, tagWant } from './basket';
 import { reputationCrowd } from './reputation';
 import type { GameState } from './state';
 
@@ -8,8 +10,9 @@ const EVENT_FAVOURITE = 2.5;
 
 /** How much a snack is wanted today, where 1 is normal. Weather and events both count. */
 export function snackDemand(state: GameState, productId: string): number {
-  const weather = WEATHER[state.weather].demand[productId] ?? 1;
-  return weather * (eventOnDay(state.day)?.favourites.includes(productId) ? EVENT_FAVOURITE : 1);
+  const tag = getProduct(productId).tag;
+  const weather = WEATHER[state.weather].demand[tag] ?? 1;
+  return weather * (eventOnDay(state.day)?.favourites.includes(tag) ? EVENT_FAVOURITE : 1);
 }
 
 /** How busy today is, where 1 is normal: weather, events and your reputation all count. */
@@ -27,8 +30,25 @@ function pickByDemand(state: GameState, rng: () => number): string {
   return state.unlocked[state.unlocked.length - 1];
 }
 
+/** How often a customer asks for a kind of snack, like a cold drink, in place of one named item. */
+export const TAG_CHANCE = 0.25;
+
+/**
+ * Turns one wanted item into its kind, but only where there's a real choice: at least two different
+ * products of that kind on the shelves, beyond what the rest of the order already takes.
+ */
+function askForAKind(wants: string[], left: Map<string, number>, pick: <T>(items: T[]) => T) {
+  const options = wants.flatMap((id, i) => {
+    const free = new Map(left).set(id, (left.get(id) ?? 0) + 1);
+    return tagChoices(free, getProduct(id).tag).length >= 2 ? [i] : [];
+  });
+  if (options.length === 0) return;
+  const i = pick(options);
+  wants[i] = tagWant(getProduct(wants[i]).tag);
+}
+
 export interface CustomerRequest {
-  /** What they'll buy. Always in stock on the shelves right now. */
+  /** What they'll buy: product ids, or now and then a kind of snack. Always in stock on the shelves right now. */
   wants: string[];
   /** Licensed snacks they went for that weren't on a shelf. Each one is a sale you missed. */
   wished: string[];
@@ -61,9 +81,12 @@ export function buildRequest(state: GameState, rng: () => number = Math.random):
     }
   }
   if (wants.length === 0 && left.size > 0) {
-    wants.push(pick([...left.keys()]));
+    const id = pick([...left.keys()]);
+    wants.push(id);
+    left.set(id, (left.get(id) ?? 0) - 1);
     wished.pop();
   }
+  if (rng() < TAG_CHANCE) askForAKind(wants, left, pick);
   return { wants, wished };
 }
 

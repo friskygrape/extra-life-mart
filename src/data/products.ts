@@ -1,10 +1,10 @@
 import { tinyTextWidth } from '../art/fontMetrics';
+import type { TagId } from './tags';
 
 export interface Product {
   id: string;
   name: string;
-  /** Fits on a shelf label. */
-  short: string;
+  tag: TagId;
   /** Prices are whole cents. */
   wholesale: number;
   retail: number;
@@ -13,18 +13,18 @@ export interface Product {
 }
 
 export const PRODUCTS: Product[] = [
-  { id: 'chips', name: 'CRUNCH CHIPS', short: 'CHIPS', wholesale: 80, retail: 189 },
-  { id: 'soda', name: 'FIZZ SODA', short: 'SODA', wholesale: 70, retail: 159 },
-  { id: 'choco', name: 'CHOCO BAR', short: 'CHOCO', wholesale: 90, retail: 209 },
-  { id: 'noodle', name: 'NOODLE CUP', short: 'CUP', wholesale: 130, retail: 279 },
-  { id: 'jerky', name: 'JERKY STICK', short: 'JERKY', wholesale: 150, retail: 399, licence: 4000 },
-  { id: 'icepop', name: 'ICE POP', short: 'POP', wholesale: 120, retail: 419, licence: 7000 },
-  { id: 'popcorn', name: 'POPCORN', short: 'CORN', wholesale: 110, retail: 449, licence: 11000 },
-  { id: 'coconut', name: 'COCONUT WATER', short: 'COCO', wholesale: 180, retail: 589, licence: 16000 },
-  { id: 'pie', name: 'MEAT PIE', short: 'PIE', wholesale: 160, retail: 639, licence: 23000 },
-  { id: 'taco', name: 'FISH TACO', short: 'TACO', wholesale: 220, retail: 789, licence: 32000 },
-  { id: 'lemon', name: 'LEMONADE', short: 'LEMON', wholesale: 150, retail: 819, licence: 45000 },
-  { id: 'shave', name: 'SHAVE ICE', short: 'SHAVE', wholesale: 170, retail: 959, licence: 60000 },
+  { id: 'chips', name: 'BBQ CHIPS', tag: 'snacks', wholesale: 80, retail: 189 },
+  { id: 'soda', name: 'GRAPE SODA', tag: 'drinks', wholesale: 70, retail: 159 },
+  { id: 'choco', name: 'CARAMEL BAR', tag: 'sweets', wholesale: 90, retail: 209 },
+  { id: 'noodle', name: 'SPICY NOODLES', tag: 'hot', wholesale: 130, retail: 279 },
+  { id: 'jerky', name: 'BEEF JERKY', tag: 'snacks', wholesale: 150, retail: 399, licence: 4000 },
+  { id: 'icepop', name: 'BERRY POP', tag: 'frozen', wholesale: 120, retail: 419, licence: 7000 },
+  { id: 'popcorn', name: 'KETTLE CORN', tag: 'sweets', wholesale: 110, retail: 449, licence: 11000 },
+  { id: 'coconut', name: 'COCO WATER', tag: 'drinks', wholesale: 180, retail: 589, licence: 16000 },
+  { id: 'pie', name: 'BEEF PIE', tag: 'hot', wholesale: 160, retail: 639, licence: 23000 },
+  { id: 'taco', name: 'FISH TACO', tag: 'hot', wholesale: 220, retail: 789, licence: 32000 },
+  { id: 'lemon', name: 'LEMONADE', tag: 'drinks', wholesale: 150, retail: 819, licence: 45000 },
+  { id: 'shave', name: 'RAINBOW ICE', tag: 'frozen', wholesale: 170, retail: 959, licence: 60000 },
 ];
 
 const BY_ID = new Map(PRODUCTS.map((p) => [p.id, p]));
@@ -36,22 +36,22 @@ export function getProduct(id: string): Product {
 }
 
 /**
- * The name to print on a shelf label, over one or two lines, with the count on the right of one of them.
- * The full name is kept whenever it fits, broken between words. The short name is only for names that can't fit at all.
+ * The name to print on a shelf label, over one or two lines, with the price on the right of one of them.
+ * The full name is always shown, broken between words when it doesn't fit on one line.
  */
-export function shelfLabelLines(product: Pick<Product, 'name' | 'short'>, qty: number, plateWidth: number): { lines: string[]; countLine: number } {
-  const besideCount = plateWidth - tinyTextWidth(String(qty)) - 2;
+export function shelfLabelLines(product: Pick<Product, 'name'>, rightText: string, plateWidth: number): { lines: string[]; rightLine: number } {
+  const beside = plateWidth - tinyTextWidth(rightText) - 2;
   const fits = (text: string, room: number) => tinyTextWidth(text) <= room;
-  if (fits(product.name, besideCount)) return { lines: [product.name], countLine: 0 };
+  if (fits(product.name, beside)) return { lines: [product.name], rightLine: 0 };
   const words = product.name.split(' ');
-  // The last option keeps the whole name on the first line, with the count alone beneath it.
+  // The last option keeps the whole name on the first line, with the price alone beneath it.
   const splits = Array.from({ length: words.length }, (_, i) => [words.slice(0, i + 1).join(' '), words.slice(i + 1).join(' ')]);
-  // The count goes on whichever line leaves it room, preferring the first.
-  for (const countLine of [0, 1]) {
-    const split = splits.find(([a, b]) => fits(a, countLine === 0 ? besideCount : plateWidth) && fits(b, countLine === 1 ? besideCount : plateWidth));
-    if (split) return { lines: split, countLine };
+  // The price goes on whichever line leaves it room, preferring the first.
+  for (const rightLine of [0, 1]) {
+    const split = splits.find(([a, b]) => fits(a, rightLine === 0 ? beside : plateWidth) && fits(b, rightLine === 1 ? beside : plateWidth));
+    if (split) return { lines: split, rightLine };
   }
-  return { lines: [product.short], countLine: 0 };
+  return { lines: [product.name], rightLine: 1 };
 }
 
 export const SHELF_CAPACITY = 12;

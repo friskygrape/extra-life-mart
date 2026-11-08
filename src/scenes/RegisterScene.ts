@@ -153,7 +153,9 @@ export class RegisterScene extends Phaser.Scene {
     // Wide enough for the highlighted row's label and amount side by side.
     const highlight = cash ? ['CHANGE DUE', formatCents(this.tendered - this.total)] : ['TOTAL', formatCents(this.total)];
     const highlightW = textWidth(highlight[0]) + textWidth(highlight[1], AMOUNT_STYLE) + 16;
-    const w = Math.min(L.W - 6, Math.max(bubbleW(), RECEIPT_MIN_W, highlightW));
+    // And for every item's full name beside its price.
+    const itemsW = Math.max(0, ...items.map((id) => textWidth(getProduct(id).name, RECEIPT_STYLE) + textWidth(formatCents(getProduct(id).retail), RECEIPT_STYLE) + 10));
+    const w = Math.min(L.W - 6, Math.max(bubbleW(), RECEIPT_MIN_W, highlightW, itemsW));
     const x = Math.min(bubbleX(), L.W - 3 - w);
     const y = this.info.receiptTop;
     const lines = items.slice(0, MAX_RECEIPT_LINES);
@@ -179,11 +181,10 @@ export class RegisterScene extends Phaser.Scene {
       at(i * PRINT_LINE_MS, () => {
         const p = getProduct(id);
         const price = formatCents(p.retail);
-        const fits = textWidth(p.name, RECEIPT_STYLE) + textWidth(price, RECEIPT_STYLE) + 4 <= w - 6;
         sfx.keypad();
         feed();
         drawPaper(paper, x, y, w, 5 + (i + 1) * RECEIPT_LINE_H, false);
-        this.keep(receiptLabel(this, x + 3, y + 3 + i * RECEIPT_LINE_H, fits ? p.name : p.short, COLOURS.ink));
+        this.keep(receiptLabel(this, x + 3, y + 3 + i * RECEIPT_LINE_H, p.name, COLOURS.ink));
         this.keep(receiptLabel(this, x + w - 3, y + 3 + i * RECEIPT_LINE_H, price, COLOURS.ink, 'right'));
       });
     });

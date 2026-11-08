@@ -1,10 +1,12 @@
+import type { TagId } from './tags';
+
 export interface BoardwalkEvent {
   id: string;
   name: string;
   /** How much busier the day is, where 1 is normal. */
   crowd: number;
-  /** Snacks people want more of during the event. */
-  favourites: string[];
+  /** Kinds of snack people want more of during the event. */
+  favourites: TagId[];
   /** What customers say beforehand, so you can stock up. */
   hint: string;
   /** What customers say on the day. */
@@ -16,40 +18,40 @@ const EVENTS: BoardwalkEvent[] = [
     id: 'surf',
     name: 'SURF CONTEST',
     crowd: 1.4,
-    favourites: ['soda', 'chips', 'coconut', 'taco'],
-    hint: 'SURFERS LOVE SODA AND CHIPS.',
+    favourites: ['drinks', 'snacks'],
+    hint: 'SURFERS LOVE COLD DRINKS AND SNACKS.',
     today: 'THE WHOLE BEACH IS OUT FOR THE SURF CONTEST!',
   },
   {
     id: 'market',
     name: 'NIGHT MARKET',
     crowd: 1.3,
-    favourites: ['noodle', 'chips', 'pie', 'popcorn'],
-    hint: 'EVERYONE WANTS NOODLES THERE.',
+    favourites: ['hot', 'snacks'],
+    hint: 'EVERYONE WANTS HOT FOOD THERE.',
     today: 'THE NIGHT MARKET BROUGHT THE WHOLE TOWN OUT!',
   },
   {
     id: 'bonfire',
     name: 'BONFIRE NIGHT',
     crowd: 1.3,
-    favourites: ['choco', 'noodle', 'popcorn', 'jerky'],
-    hint: 'CHOCO BARS WILL GO FAST.',
+    favourites: ['sweets', 'snacks'],
+    hint: 'SWEETS AND SNACKS WILL GO FAST.',
     today: "WE'RE BUILDING THE BONFIRE. SMELLS GREAT ALREADY!",
   },
   {
     id: 'kite',
     name: 'KITE FESTIVAL',
     crowd: 1.25,
-    favourites: ['soda', 'choco', 'icepop', 'shave'],
-    hint: 'KIDS WILL WANT SODA AND CHOCO.',
+    favourites: ['frozen', 'sweets'],
+    hint: 'KIDS WILL WANT SWEETS AND FROZEN TREATS.',
     today: 'LOOK UP! THE SKY IS FULL OF KITES TODAY!',
   },
   {
     id: 'sandcastle',
     name: 'SANDCASTLE DAY',
     crowd: 1.3,
-    favourites: ['chips', 'choco', 'lemon', 'icepop'],
-    hint: 'BUILDERS LIVE ON CHIPS AND CHOCO.',
+    favourites: ['snacks', 'frozen'],
+    hint: 'BUILDERS LIVE ON SNACKS AND ICE POPS.',
     today: 'SOMEONE BUILT A SANDCASTLE TALLER THAN ME!',
   },
 ];

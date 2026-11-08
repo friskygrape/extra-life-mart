@@ -3,7 +3,7 @@ import { calendarHeading } from '../src/logic/calendar';
 import { flickerSteps, nextFlickerSeconds } from '../src/logic/flicker';
 import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
 import { tinyTextWidth } from '../src/art/fontMetrics';
-import { canAddToTable, isOrderComplete, requestLines } from '../src/logic/basket';
+import { canAddToTable, isOrderComplete, lineName, requestLines, tagWant, wantTag } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
 import { clockLabel, lightingAt } from '../src/logic/clock';
 import { checkCard, checkChange, completeSale, saleTotal } from '../src/logic/checkout';
@@ -291,9 +291,59 @@ describe('fetching items', () => {
   });
   it('groups the request and marks finished lines', () => {
     expect(requestLines(['chips', 'chips', 'soda'], ['chips', 'soda'])).toEqual([
-      { productId: 'chips', remaining: 1, done: false },
-      { productId: 'soda', remaining: 0, done: true },
+      { want: 'chips', tag: null, remaining: 1, done: false },
+      { want: 'soda', tag: null, remaining: 0, done: true },
     ]);
+  });
+});
+
+describe('asking for a kind of snack', () => {
+  const drink = tagWant('drinks');
+  it('takes any product of that kind, and nothing else', () => {
+    expect(canAddToTable([drink], [], 'soda')).toBe(true);
+    expect(canAddToTable([drink], [], 'lemon')).toBe(true);
+    expect(canAddToTable([drink], [], 'chips')).toBe(false);
+    expect(canAddToTable([drink], ['lemon'], 'soda')).toBe(false);
+  });
+  it('fills named items first, then the kind', () => {
+    const wants = ['soda', drink];
+    expect(canAddToTable(wants, ['soda'], 'soda')).toBe(true);
+    expect(canAddToTable(wants, ['soda', 'soda'], 'lemon')).toBe(false);
+    expect(isOrderComplete(wants, ['soda'])).toBe(false);
+    expect(isOrderComplete(wants, ['soda', 'coconut'])).toBe(true);
+    expect(isOrderComplete(wants, ['coconut', 'soda'])).toBe(true);
+  });
+  it('lists the kind last', () => {
+    expect(requestLines([drink, 'chips'], ['lemon'])).toEqual([
+      { want: 'chips', tag: null, remaining: 1, done: false },
+      { want: drink, tag: 'drinks', remaining: 0, done: true },
+    ]);
+  });
+  it('names the product when only one would do', () => {
+    const s = newGame();
+    Object.assign(s.shelves[0], { productId: 'soda', qty: 3 });
+    Object.assign(s.shelves[1], { productId: 'lemon', qty: 1 });
+    const [line] = requestLines([drink], []);
+    expect(lineName(s, [drink], [], line)).toBe('COLD DRINK');
+    expect(lineName(s, ['lemon', drink], [], requestLines(['lemon', drink], [])[1])).toBe('GRAPE SODA');
+  });
+  it('is only asked for when two different products of that kind are free', () => {
+    const s = newGame();
+    s.unlocked = ['soda', 'lemon'];
+    Object.assign(s.shelves[0], { productId: 'soda', qty: 5 });
+    let tags = 0;
+    for (let i = 0; i < 300; i++) if (buildRequest(s).wants.some((w) => wantTag(w))) tags += 1;
+    expect(tags).toBe(0);
+    Object.assign(s.shelves[1], { productId: 'lemon', qty: 1 });
+    for (let i = 0; i < 600; i++) {
+      const { wants } = buildRequest(s);
+      if (!wants.some((w) => wantTag(w))) continue;
+      tags += 1;
+      // The lemonade can't be both named and stand in for the drink.
+      expect(wants.filter((w) => w === 'lemon').length).toBe(0);
+      expect(wants.filter((w) => wantTag(w)).length).toBe(1);
+    }
+    expect(tags).toBeGreaterThan(20);
   });
 });
 
@@ -605,21 +655,21 @@ describe('shelf labels', () => {
   const narrowest = 48;
 
   it('keep the full name on one line when it fits', () => {
-    expect(shelfLabelLines(getProduct('chips'), 12, 80)).toEqual({ lines: ['CRUNCH CHIPS'], countLine: 0 });
-    expect(shelfLabelLines(getProduct('icepop'), 12, narrowest)).toEqual({ lines: ['ICE POP'], countLine: 0 });
+    expect(shelfLabelLines(getProduct('chips'), '$1.89', 80)).toEqual({ lines: ['BBQ CHIPS'], rightLine: 0 });
   });
 
   it('break the full name over two lines on narrow shelves', () => {
-    expect(shelfLabelLines(getProduct('chips'), 12, narrowest)).toEqual({ lines: ['CRUNCH', 'CHIPS'], countLine: 0 });
+    expect(shelfLabelLines(getProduct('chips'), '$1.89', narrowest)).toEqual({ lines: ['BBQ', 'CHIPS'], rightLine: 0 });
   });
 
-  it('show every full name on the narrowest shelf, with room for a two-digit count', () => {
+  it('show every full name on the narrowest shelf, with room for its price', () => {
     for (const p of PRODUCTS) {
-      const { lines, countLine } = shelfLabelLines(p, SHELF_CAPACITY, narrowest);
+      const price = formatCents(p.retail);
+      const { lines, rightLine } = shelfLabelLines(p, price, narrowest);
       expect(lines.join(' ').trim()).toBe(p.name);
       lines.forEach((line, i) => {
-        const count = i === countLine ? 2 + tinyTextWidth(String(SHELF_CAPACITY)) : 0;
-        expect(tinyTextWidth(line) + count).toBeLessThanOrEqual(narrowest);
+        const right = i === rightLine ? 2 + tinyTextWidth(price) : 0;
+        expect(tinyTextWidth(line) + right).toBeLessThanOrEqual(narrowest);
       });
     }
   });
@@ -778,8 +828,17 @@ describe('weather and demand', () => {
   it('even the starter snacks respond to every kind of unusual weather', () => {
     const starters = ['chips', 'soda', 'choco', 'noodle'];
     for (const w of ['heatwave', 'rainy', 'cloudy'] as const) {
-      expect(starters.some((id) => (WEATHER[w].demand[id] ?? 1) > 1)).toBe(true);
+      const s = newGame();
+      s.weather = w;
+      expect(starters.some((id) => snackDemand(s, id) > 1)).toBe(true);
     }
+  });
+  it('weather moves every product of a kind together', () => {
+    const s = newGame();
+    s.weather = 'heatwave';
+    expect(snackDemand(s, 'soda')).toBe(snackDemand(s, 'lemon'));
+    expect(snackDemand(s, 'soda')).toBeGreaterThan(1);
+    expect(snackDemand(s, 'pie')).toBeLessThan(1);
   });
   it('customers mostly ask for what suits the weather', () => {
     const s = newGame();
@@ -829,15 +888,16 @@ describe('events', () => {
     const s = newGame();
     s.day = 6;
     const event = eventOnDay(6)!;
-    expect(snackDemand(s, event.favourites[0])).toBeGreaterThan(1);
+    const fan = PRODUCTS.find((p) => p.tag === event.favourites[0])!.id;
+    expect(snackDemand(s, fan)).toBeGreaterThan(1);
     s.day = 1;
-    expect(snackDemand(s, event.favourites[0])).toBe(1);
+    expect(snackDemand(s, fan)).toBe(1);
   });
   it('every event favours at least one starter snack', () => {
     const starters = ['chips', 'soda', 'choco', 'noodle'];
     for (let d = 1; d < 200; d++) {
       const event = eventOnDay(d);
-      if (event) expect(event.favourites.some((id) => starters.includes(id))).toBe(true);
+      if (event) expect(starters.some((id) => event.favourites.includes(getProduct(id).tag))).toBe(true);
     }
   });
 });

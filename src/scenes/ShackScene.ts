@@ -3,7 +3,7 @@ import { getProduct, shelfLabelLines } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
 import { REGULARS } from '../data/regulars';
-import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, COMPUTER_SPRITE_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, MONITOR_CENTRE_X, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
+import { BROKEN_TAPE_H, CALENDAR_GRID, CALENDAR_H, CALENDAR_W, CLOSED_SIGN_H, CLOSED_SIGN_W, CUSTOMER_LOOKS, DOOR_FRAMES, ITEM_SCALE, REGISTER_DISPLAY_H, REGISTER_DISPLAY_W, SHELF_LABEL_H, TV_FRAMES, TV_H, TV_SCREEN_X, TV_SCREEN_Y, TV_W, columnX, shelfGlowKey, wallTop } from '../art/textures';
 import { sfx } from '../audio';
 import { setMusicMood } from '../music';
 import { WEATHER, type WeatherId } from '../data/weather';
@@ -11,7 +11,8 @@ import { eventOnDay } from '../data/events';
 import { pickGreeting } from '../logic/dialogue';
 import { calendarHeading, isRentDay, weekOf, weekdayIndex } from '../logic/calendar';
 import { EMPTY_SHELVES_POINTS, MAX_STARS, MISSED_SALE_POINTS, SLOW_TIMES, changeReputation, greatServiceSeconds, stars } from '../logic/reputation';
-import { canAddToTable, isOrderComplete, requestLines } from '../logic/basket';
+import { canAddToTable, isOrderComplete, lineName, requestLines } from '../logic/basket';
+import { TAGS } from '../data/tags';
 import { lightingAt } from '../logic/clock';
 import { buildRequest, chooseCash, emptyShelfComment, idleWait, nextSpawnDelay, pickLook, shortenWhenIdle } from '../logic/customers';
 import { endDay, nothingToSell } from '../logic/day';
@@ -22,6 +23,7 @@ import { customerTender, formatCents, tenderBills } from '../logic/money';
 import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, cardSpot, portraitX, receiptHeight, tenderLayout } from '../layout';
 import { billImage } from '../art/bills';
+import { COMPUTER, addComputer, type ComputerParts } from '../art/computer';
 import { session } from '../session';
 import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel, titleLabel } from '../ui';
 
@@ -92,8 +94,10 @@ const NEXT_GUIDE_SECONDS = 0.15;
 const GUIDE_DEPTH = 7.5;
 const SHELF_NOTE = 'REPAIR THESE SHELVES FOR\nMORE SPACE. SELECT UPGRADES\nON THE COMPUTER.';
 const SHELF_NOTE_MS = 4000;
-const COMPUTER_W = COMPUTER_SPRITE_W;
-const computerTop = () => L.counterBottom - 6 + 2 - 60;
+const COMPUTER_W = COMPUTER.w;
+/** The keyboard's front edge sits a little above the counter's bottom. */
+const computerTop = () => L.counterBottom - 5 - COMPUTER.h;
+const MONITOR_CENTRE_X = COMPUTER.monitorCentreX;
 const shelfIsEmpty = (id: string) => session.state.shelves.find((s) => s.id === id)?.qty === 0;
 const GUIDE_TEXT: Record<OnboardingStep, string> = {
   shelf: 'ADD ITEMS TO\nTHE SHELF\nBEFORE OPENING',
@@ -220,6 +224,8 @@ export class ShackScene extends Phaser.Scene {
   private soldOutShelf: string | null = null;
   private soldOutPending: string | null = null;
   private computerTipDone = false;
+  /** The computer's parts, kept for animating. */
+  private computer!: ComputerParts;
 
   constructor() {
     super('Shack');
@@ -266,9 +272,9 @@ export class ShackScene extends Phaser.Scene {
     this.showPaper(PAPER_SHORT_H);
     const computerX = W - COMPUTER_W - 2;
     const computerY = computerTop();
-    this.add.image(computerX, computerY, 'computer').setOrigin(0).setDepth(4.5);
-    tinyLabel(this, computerX + 28, computerY + 10, 'SHOP', COLOURS.white, 'center').setDepth(4.6);
-    this.add.rectangle(computerX, computerY, COMPUTER_W, 60, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+    this.computer = addComputer(this, computerX, computerY, (x, y, text) => tinyLabel(this, x, y, text, COMPUTER.wordColour, 'center'));
+    this.computer.container.setDepth(4.5);
+    this.add.rectangle(computerX, computerY, COMPUTER_W, COMPUTER.h, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {
         this.finishComputerTip();
         // Always named, because a scene launched without one reuses the page it was last given.
@@ -621,11 +627,14 @@ export class ShackScene extends Phaser.Scene {
       const labelY = y + L.rowH - SHELF_LABEL_H;
       if (shelf.productId && shelf.qty > 0) {
         art.push(...this.shelfStock(shelf.productId, shelf.qty, x, w, labelY - 1));
-        const { lines, countLine } = shelfLabelLines(getProduct(shelf.productId), shelf.qty, w - 6);
+        const product = getProduct(shelf.productId);
+        const { lines, rightLine } = shelfLabelLines(product, formatCents(product.retail), w - 6);
         // Two lines fill the plate; a single line sits in its middle.
         const lineY = (i: number) => labelY + (lines.length === 1 ? 6 : 3 + i * 7);
         lines.forEach((line, i) => art.push(tinyLabel(this, x + 3, lineY(i), line, COLOURS.ink).setDepth(6)));
-        art.push(tinyLabel(this, x + w - 3, lineY(countLine), String(shelf.qty), COLOURS.ink, 'right').setDepth(6));
+        art.push(tinyLabel(this, x + w - 3, lineY(rightLine), formatCents(product.retail), COLOURS.ink, 'right').setDepth(6));
+        // A stripe in the colour of its kind along the foot of the plate
+        art.push(this.add.rectangle(x + 2, labelY + SHELF_LABEL_H - 3.5, w - 4, 1, TAGS[product.tag].colour).setOrigin(0).setDepth(6));
       } else {
         art.push(label(this, x + Math.floor(w / 2), y + Math.floor((L.rowH - SHELF_LABEL_H - 7) / 2), '+', SHELF_PLUS, 'center').setDepth(6));
       }
@@ -716,7 +725,7 @@ export class ShackScene extends Phaser.Scene {
     if (customer.wants.length === 0) return;
     if (this.readyToPay || !canAddToTable(customer.wants, session.table, productId)) {
       sfx.error();
-      this.say(`NO ${getProduct(productId).short}, THANKS`, COMPLAINT);
+      this.say(`NO ${getProduct(productId).name}, THANKS`, COMPLAINT);
       return;
     }
     if (this.table.length >= TABLE_CAPACITY) return;
@@ -878,7 +887,7 @@ export class ShackScene extends Phaser.Scene {
             this.tweens.add({
               targets: icon,
               x: L.W - COMPUTER_W - 2 + MONITOR_CENTRE_X,
-              y: computerTop() + 16,
+              y: computerTop() + COMPUTER.screen.y + COMPUTER.screen.h / 2,
               scale: 0.5,
               duration: 360,
               ease: 'Quad.easeIn',
@@ -1093,7 +1102,7 @@ export class ShackScene extends Phaser.Scene {
       const ruleY = y + 8;
       y += 11;
       requestLines(customer.wants, session.table).forEach((line) => {
-        const name = getProduct(line.productId).name;
+        const name = lineName(session.state, customer.wants, session.table, line);
         if (line.done) {
           const row = this.add.rectangle(bubbleX() + 3, y - 1, bubbleW() - 6, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
           this.bubbleLines.push(row);

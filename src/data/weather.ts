@@ -1,3 +1,5 @@
+import type { TagId } from './tags';
+
 export type WeatherId = 'sunny' | 'heatwave' | 'rainy' | 'cloudy';
 
 export interface Weather {
@@ -6,8 +8,8 @@ export interface Weather {
   short: string;
   /** How busy the day is, where 1 is normal. */
   crowd: number;
-  /** How much more or less each snack is wanted. Anything not listed stays at 1. */
-  demand: Record<string, number>;
+  /** How much more or less each kind of snack is wanted. Anything not listed stays at 1. */
+  demand: Partial<Record<TagId, number>>;
 }
 
 export const WEATHER: Record<WeatherId, Weather> = {
@@ -16,19 +18,19 @@ export const WEATHER: Record<WeatherId, Weather> = {
     id: 'heatwave',
     short: 'HEAT',
     crowd: 1.2,
-    demand: { soda: 3, icepop: 3.5, shave: 3.5, lemon: 3, coconut: 3, choco: 0.5, noodle: 0.4, pie: 0.4 },
+    demand: { drinks: 3, frozen: 3.5, sweets: 0.5, hot: 0.4 },
   },
   rainy: {
     id: 'rainy',
     short: 'RAIN',
     crowd: 0.75,
-    demand: { noodle: 3.5, pie: 3.5, taco: 1.5, choco: 1.5, soda: 0.5, icepop: 0.3, shave: 0.3, lemon: 0.4, coconut: 0.5 },
+    demand: { hot: 3.5, sweets: 1.5, drinks: 0.5, frozen: 0.3 },
   },
   cloudy: {
     id: 'cloudy',
     short: 'CLOUD',
     crowd: 0.9,
-    demand: { chips: 2.5, choco: 1.5, jerky: 2.5, popcorn: 2.5, icepop: 0.6, shave: 0.6 },
+    demand: { snacks: 2.5, sweets: 1.5, frozen: 0.6 },
   },
 };
 

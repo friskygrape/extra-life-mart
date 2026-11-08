@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { BOX_SIZE, type Product } from '../data/products';
+import { TAG_ORDER, TAGS, type TagId } from '../data/tags';
 import { SHELF_ROW_PRICES } from '../data/shelves';
 import { WEATHER } from '../data/weather';
 import { totalInStore } from '../logic/inventory';
@@ -47,6 +48,8 @@ const ORDER_LIST_H = 214;
 const ORDER_FOOTER_Y = CONTENT_Y + ORDER_LIST_H + 3;
 const HEADER_H = 12;
 const INVENTORY_ROW_H = 28;
+/** The band naming each kind of snack in a list. */
+const HEADING_H = 11;
 const INVENTORY_FOOTER_Y = 350;
 
 /** Everything on the shop's computer: a main page, and a page for each thing it does. */
@@ -124,6 +127,30 @@ export class ComputerScene extends Phaser.Scene {
   }
 
   /** A white, sunken list with a blocky scroll bar. */
+  /** Where each heading and product goes in a list grouped by kind. */
+  private groupRows(groups: { tag: TagId; products: Product[] }[], rowH: number) {
+    const headings: { tag: TagId; y: number }[] = [];
+    const items: { product: Product; y: number }[] = [];
+    let y = 0;
+    for (const group of groups) {
+      headings.push({ tag: group.tag, y });
+      y += HEADING_H;
+      for (const product of group.products) {
+        items.push({ product, y });
+        y += rowH;
+      }
+    }
+    return { headings, items, height: y };
+  }
+
+  private addHeadings(list: ScrollList, headings: { tag: TagId; y: number }[]) {
+    for (const { tag, y } of headings) {
+      list.add(this.add.rectangle(FIELD_X + 2, y, FIELD_W - 12, HEADING_H - 1, RETRO.face).setOrigin(0));
+      list.add(this.add.rectangle(FIELD_X + 5, y + 3, 5, 5, TAGS[tag].colour).setOrigin(0));
+      list.add(tinyLabel(this, FIELD_X + 13, y + 2, TAGS[tag].heading, RETRO.ink));
+    }
+  }
+
   private field(y: number, h: number, contentH: number): ScrollList {
     this.track(bevel(this, FIELD_X, y, FIELD_W, h, false, RETRO.field));
     const list = new ScrollList(this, y + 2, h - 4, contentH, this.scroll, {
@@ -140,14 +167,15 @@ export class ComputerScene extends Phaser.Scene {
 
   private renderInventory() {
     const { state } = session;
-    const products = unlockedProducts(state).sort((a, b) => totalInStore(state, b.id) - totalInStore(state, a.id));
+    const groups = groupByTag(unlockedProducts(state).sort((a, b) => totalInStore(state, b.id) - totalInStore(state, a.id)));
     this.track(bevel(this, FIELD_X, CONTENT_Y, FIELD_W, HEADER_H, true));
     this.track(tinyLabel(this, FIELD_X + 4, CONTENT_Y + 3, 'SNACK', RETRO.ink));
     this.track(tinyLabel(this, WIDTH - 18, CONTENT_Y + 3, 'IN STOCK', RETRO.ink, 'right'));
     const top = CONTENT_Y + HEADER_H;
-    const list = this.field(top, INVENTORY_FOOTER_Y - top - 3, products.length * INVENTORY_ROW_H);
-    products.forEach((product, i) => {
-      const y = i * INVENTORY_ROW_H;
+    const rows = this.groupRows(groups, INVENTORY_ROW_H);
+    const list = this.field(top, INVENTORY_FOOTER_Y - top - 3, rows.height);
+    this.addHeadings(list, rows.headings);
+    rows.items.forEach(({ product, y }) => {
       const count = totalInStore(state, product.id);
       const coming = (state.pendingOrders[product.id] ?? 0) + (state.arrivals[product.id] ?? 0);
       list.add(this.add.image(20, y + 13, `item_${product.id}`).setScale(ITEM_SCALE));
@@ -162,9 +190,10 @@ export class ComputerScene extends Phaser.Scene {
   // ---- Order stock --------------------------------------------------------
 
   private renderOrder() {
-    const products = unlockedProducts(session.state);
-    const list = this.field(CONTENT_Y, ORDER_LIST_H, products.length * ROW_H);
-    products.forEach((product, i) => this.productRow(product, i * ROW_H, list));
+    const rows = this.groupRows(groupByTag(unlockedProducts(session.state)), ROW_H);
+    const list = this.field(CONTENT_Y, ORDER_LIST_H, rows.height);
+    this.addHeadings(list, rows.headings);
+    rows.items.forEach(({ product, y }) => this.productRow(product, y, list));
     this.renderOrderFooter();
   }
 
@@ -287,4 +316,9 @@ export class ComputerScene extends Phaser.Scene {
     session.modal = false;
     this.scene.stop();
   }
+}
+
+/** Products under their kinds, in the usual order of kinds, keeping the order they came in within each. */
+function groupByTag(products: Product[]): { tag: TagId; products: Product[] }[] {
+  return TAG_ORDER.map((tag) => ({ tag, products: products.filter((p) => p.tag === tag) })).filter((g) => g.products.length > 0);
 }
