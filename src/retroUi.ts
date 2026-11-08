@@ -18,8 +18,9 @@ export const RETRO = {
   field: 0xffffff,
 };
 
-const TITLE_H = 13;
-const CLOSE_BOX = 11;
+/** The blue title bar, tall enough for a close box a thumb can find. */
+export const TITLE_H = 18;
+const CLOSE_BOX = 16;
 
 /** A raised or sunken edge: light on one side and dark on the other. */
 export function drawBevel(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, raised: boolean, fill: number = RETRO.face) {
@@ -96,25 +97,28 @@ export function retroButton(
 }
 
 /** A window with a blue title bar and an X in a box, which closes it. */
-export function retroWindow(scene: Phaser.Scene, y: number, h: number, title: string, onClose: () => void): { destroy(): void } {
+export function retroWindow(scene: Phaser.Scene, y: number, h: number, title: string, onClose: () => void, w: number = WIDTH - 4): { destroy(): void } {
   const x = 2;
-  const w = WIDTH - 4;
   const frame = bevel(scene, x, y, w, h, true);
   const barX = x + 3;
   const barY = y + 3;
   const barW = w - 6;
   const bar = scene.add.rectangle(barX, barY, barW, TITLE_H, RETRO.title).setOrigin(0);
-  const heading = titleLabel(scene, barX + 3, barY + 2, title, RETRO.light);
+  const heading = titleLabel(scene, barX + 3, barY + Math.floor((TITLE_H - 9) / 2), title, RETRO.light);
   const boxX = barX + barW - CLOSE_BOX - 1;
   const boxY = barY + 1;
   const box = bevel(scene, boxX, boxY, CLOSE_BOX, CLOSE_BOX, true);
+  // A bold X, two pixels thick, across the middle of the box
   const cross = scene.add.graphics();
   cross.fillStyle(RETRO.ink);
-  for (let i = 0; i < 5; i++) {
-    cross.fillRect(boxX + 3 + i, boxY + 3 + i, 1, 1).fillRect(boxX + 7 - i, boxY + 3 + i, 1, 1);
+  const size = 8;
+  const crossX = boxX + Math.floor((CLOSE_BOX - size) / 2) - 1;
+  const crossY = boxY + Math.floor((CLOSE_BOX - size) / 2) - 1;
+  for (let i = 0; i < size; i++) {
+    cross.fillRect(crossX + i, crossY + i, 2, 1).fillRect(crossX + size - 1 - i, crossY + i, 2, 1);
   }
   // Larger than the box, so it's easy to hit with a thumb.
-  const hit = scene.add.rectangle(boxX + CLOSE_BOX + 3, y, 28, 22, 0xffffff, 0).setOrigin(1, 0).setInteractive({ useHandCursor: true })
+  const hit = scene.add.rectangle(boxX + CLOSE_BOX + 4, y, 38, TITLE_H + 12, 0xffffff, 0).setOrigin(1, 0).setInteractive({ useHandCursor: true })
     .on('pointerup', () => {
       sfx.click();
       onClose();

@@ -198,9 +198,10 @@ export class ScrollList {
   ) {
     this.container = scene.add.container(0, top);
     this.maxScroll = Math.max(0, contentHeight - height);
-    const offsetX = Math.floor((L.W - WIDTH) / 2);
+    // The mask covers the full width of the screen, wherever the camera has put the layout.
+    const left = scene.cameras.main.scrollX;
     this.maskShape = scene.make.graphics({});
-    this.maskShape.fillStyle(0xffffff).fillRect(-offsetX, top, L.W, height);
+    this.maskShape.fillStyle(0xffffff).fillRect(left, top, L.W, height);
     this.container.setMask(this.maskShape.createGeometryMask());
     if (this.maxScroll > 0) {
       const thumbH = Math.max(16, Math.round((height * height) / contentHeight));
@@ -311,10 +312,12 @@ export function drawBubble(g: Phaser.GameObjects.Graphics, x: number, y: number,
 /**
  * For screens laid out at the minimum size: centres that content on larger
  * screens, and fills the whole screen behind it, which also stops taps reaching the shop.
+ * Screens laid out for the whole screen ask for no centring.
  */
-export function backdrop(scene: Phaser.Scene): Phaser.GameObjects.Rectangle {
-  const offsetX = Math.floor((L.W - WIDTH) / 2);
-  const offsetY = Math.floor((L.H - HEIGHT) / 2);
+export function backdrop(scene: Phaser.Scene, fullScreen = false): Phaser.GameObjects.Rectangle {
+  // A full-screen layout uses the screen as it is, from its own top-left corner.
+  const offsetX = fullScreen ? 0 : Math.floor((L.W - WIDTH) / 2);
+  const offsetY = fullScreen ? 0 : Math.floor((L.H - HEIGHT) / 2);
   scene.cameras.main.setScroll(-offsetX, -offsetY);
   // A little past every edge, so rounding can't leave a sliver of the shop showing.
   const bleed = 4;
