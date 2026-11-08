@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BILL_CENTS, billSource, createBills } from '../art/bills';
 import { createGameFont, loadGameFont } from '../art/font';
-import { COMPUTER_LAYERS, computerKey } from '../art/computer';
+import { COMPUTER_LAYERS, computerSource, createComputer } from '../art/computer';
 import { CUSTOMER_LOOKS, createTextures } from '../art/textures';
 
 const MONEY_ART = [5, 10, 25, 50].map((c) => `coin_${c}`);
@@ -13,7 +13,7 @@ export class BootScene extends Phaser.Scene {
 
   preload() {
     for (const scene of ['beach', 'beach_dusk', 'beach_night']) this.load.image(scene, `${scene}.png`);
-    for (const art of ['register', 'register_paper', 'sign', 'sign_star_on', 'sign_star_off', 'choco_group', 'item_soda', 'item_chips', 'item_choco', 'item_noodle', ...COMPUTER_LAYERS.map(computerKey)]) {
+    for (const art of ['register', 'register_paper', 'sign', 'sign_star_on', 'sign_star_off', 'choco_group', 'item_soda', 'item_chips', 'item_choco', 'item_noodle', ...COMPUTER_LAYERS.map(computerSource)]) {
       this.load.image(art, `shop/${art}.png`);
     }
     for (const art of MONEY_ART) this.load.image(art, `money/${art}.png`);
@@ -28,6 +28,7 @@ export class BootScene extends Phaser.Scene {
       for (const art of MONEY_ART) this.textures.get(art).setFilter(Phaser.Textures.FilterMode.LINEAR);
       createTextures(this);
       createBills(this);
+      createComputer(this);
       this.scene.start('Shack');
     });
   }

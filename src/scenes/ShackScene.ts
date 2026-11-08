@@ -96,7 +96,7 @@ const SHELF_NOTE = 'REPAIR THESE SHELVES FOR\nMORE SPACE. SELECT UPGRADES\nON TH
 const SHELF_NOTE_MS = 4000;
 const COMPUTER_W = COMPUTER.w;
 /** The keyboard's front edge sits a little above the counter's bottom. */
-const computerTop = () => L.counterBottom - 5 - COMPUTER.h;
+const computerTop = () => Math.round(L.counterBottom - 5 - COMPUTER.h);
 const MONITOR_CENTRE_X = COMPUTER.monitorCentreX;
 const shelfIsEmpty = (id: string) => session.state.shelves.find((s) => s.id === id)?.qty === 0;
 const GUIDE_TEXT: Record<OnboardingStep, string> = {
