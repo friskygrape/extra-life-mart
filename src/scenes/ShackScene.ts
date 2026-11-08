@@ -270,9 +270,9 @@ export class ShackScene extends Phaser.Scene {
     this.registerText = tinyLabel(this, 1 + DISPLAY_X + REGISTER_DISPLAY_W - 3, registerTop + DISPLAY_Y + Math.floor((REGISTER_DISPLAY_H - 7) / 2), '$0.00', REGISTER_GREEN, 'right').setDepth(4.6);
     this.paper = this.add.image(0, 0, 'register_paper').setOrigin(0).setScale(0.5).setDepth(4.51);
     this.showPaper(PAPER_SHORT_H);
-    const computerX = W - COMPUTER_W - 2;
+    const computerX = Math.floor(W - COMPUTER_W - 2);
     const computerY = computerTop();
-    this.computer = addComputer(this, computerX, computerY, (x, y, text) => tinyLabel(this, x, y, text, COMPUTER.wordColour, 'center'));
+    this.computer = addComputer(this, computerX, computerY);
     this.computer.container.setDepth(4.5);
     this.add.rectangle(computerX, computerY, COMPUTER_W, COMPUTER.h, 0xffffff, 0).setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
       .on('pointerup', () => {

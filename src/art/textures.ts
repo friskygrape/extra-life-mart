@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { L, drawerLayout } from '../layout';
-import { createComputer } from './computer';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -504,7 +503,6 @@ function drawShop(scene: Phaser.Scene) {
     rect(c, '#c98f50', 8, 19, 2, 1);
   });
 
-  createComputer(scene);
   drawTerminal(scene);
 }
 
