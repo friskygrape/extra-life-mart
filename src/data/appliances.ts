@@ -13,7 +13,7 @@ export interface Appliance {
 
 // TESTING: both are $1 for now. Planned prices: coffee machine 12000, blender 20000.
 export const APPLIANCES: Appliance[] = [
-  { id: 'coffee', name: 'COFFEE MACHINE', blurb: '5 CUPS A POT. USES BEANS', price: 100, unlocks: ['coffee', 'beans'] },
+  { id: 'coffee', name: 'COFFEE MACHINE', blurb: '3 CUPS A POT. USES BEANS', price: 100, unlocks: ['coffee', 'beans'] },
   {
     id: 'blender',
     name: 'BLENDER',
@@ -34,6 +34,6 @@ export const SMOOTHIE_FRUIT: Record<string, string> = {
 export const smoothieFor = (fruit: string) => Object.keys(SMOOTHIE_FRUIT).find((id) => SMOOTHIE_FRUIT[id] === fruit)!;
 
 /** Cups of coffee in a full pot, and the seconds a brew or a blend takes. */
-export const POT_CUPS = 5;
+export const POT_CUPS = 3;
 export const BREW_SECONDS = 5;
 export const BLEND_SECONDS = 5;

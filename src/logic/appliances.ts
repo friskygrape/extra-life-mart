@@ -69,6 +69,13 @@ export function pourDrink(state: GameState, drinkId: string): boolean {
   return true;
 }
 
+/** Throws out a finished smoothie, freeing the blender. Its fruit is gone. */
+export function emptyBlender(state: GameState): boolean {
+  if (state.blenderJar === null || state.blendLeft > 0) return false;
+  state.blenderJar = null;
+  return true;
+}
+
 /** A drink taken back off the counter goes back where it came from, if there's room. */
 export function returnDrink(state: GameState, drinkId: string): boolean {
   if (drinkId === 'coffee') {
@@ -93,3 +100,25 @@ export function drinksAvailable(state: GameState, drinkId: string): number {
 }
 
 export { APPLIANCES };
+
+export const DECANTER_STATES = ['empty', 'low', 'half', 'three_quarter', 'full'] as const;
+export type DecanterState = (typeof DECANTER_STATES)[number];
+
+/** The decanter's look: filling through every state while it brews, then showing what's left. */
+export function decanterState(cups: number, brewLeft: number): DecanterState {
+  if (brewLeft > 0) {
+    const progress = 1 - brewLeft / BREW_SECONDS;
+    return DECANTER_STATES[Math.min(DECANTER_STATES.length - 1, Math.floor(progress * DECANTER_STATES.length))];
+  }
+  if (cups <= 0) return 'empty';
+  if (cups >= POT_CUPS) return 'full';
+  // Part full: the closest of the in-between states, so one cup left is never shown as empty or full.
+  const middle: DecanterState[] = ['low', 'half', 'three_quarter'];
+  const steps = [0.25, 0.5, 0.75];
+  const fraction = cups / POT_CUPS;
+  let best = 0;
+  steps.forEach((step, i) => {
+    if (Math.abs(step - fraction) < Math.abs(steps[best] - fraction)) best = i;
+  });
+  return middle[best];
+}

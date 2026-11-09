@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
-import { BOX_SIZE, type Product } from '../data/products';
+import { boxSize, type Product } from '../data/products';
 import { TAG_ORDER, TAGS, type TagId } from '../data/tags';
 import { SHELF_ROW_PRICES } from '../data/shelves';
 import { APPLIANCES } from '../data/appliances';
@@ -225,17 +225,18 @@ export class ComputerScene extends Phaser.Scene {
   }
 
   private productRow(product: Product, y: number, list: ScrollList) {
-    const boxes = (this.cart[product.id] ?? 0) / BOX_SIZE;
+    const box = boxSize(product.id);
+    const boxes = (this.cart[product.id] ?? 0) / box;
     const have = session.state.stockroom[product.id] ?? 0;
     const coming = (session.state.pendingOrders[product.id] ?? 0) + (session.state.arrivals[product.id] ?? 0);
     list.add(this.add.image(rowX(20), y + 17, `item_${product.id}`).setScale(ITEM_SCALE));
     list.add(titleLabel(this, rowX(34), y + 2, product.name, RETRO.ink));
-    list.add(tinyLabel(this, rowX(34), y + 13, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, RETRO.good));
+    list.add(tinyLabel(this, rowX(34), y + 13, `${box} FOR ${formatCents(product.wholesale * box)}`, RETRO.good));
     list.add(tinyLabel(this, rowX(34), y + 23, coming > 0 ? `HAVE ${have} COMING ${coming}` : product.kind === 'ingredient' ? `HAVE ${have}` : `SELL ${formatCents(product.retail)} HAVE ${have}`, RETRO.dim));
     const right = fieldRight();
-    list.addButton(retroButton(this, right - 74, y + 5, 24, 24, '-', list.guard(() => this.change(product.id, -BOX_SIZE)), null)).setEnabled(boxes > 0);
+    list.addButton(retroButton(this, right - 74, y + 5, 24, 24, '-', list.guard(() => this.change(product.id, -box)), null)).setEnabled(boxes > 0);
     list.add(label(this, right - 42, y + 13, String(boxes), boxes ? RETRO.ink : RETRO.dim, 'center'));
-    list.addButton(retroButton(this, right - 34, y + 5, 24, 24, '+', list.guard(() => this.change(product.id, BOX_SIZE)), null));
+    list.addButton(retroButton(this, right - 34, y + 5, 24, 24, '+', list.guard(() => this.change(product.id, box)), null));
   }
 
   private renderOrderFooter() {
@@ -249,7 +250,7 @@ export class ComputerScene extends Phaser.Scene {
     place.setEnabled(cost > 0 && canAfford);
     const rushNow = this.track(retroButton(this, fieldX(), y + 46, fieldW(), 30, `RUSH TODAY: +${formatCents(RUSH_FEE)}`, () => this.submit(true)));
     rushNow.setEnabled(cost > 0 && rush <= session.state.balance);
-    const note = !canAfford ? 'NOT ENOUGH MONEY' : this.notice || `EACH + IS A BOX OF ${BOX_SIZE}`;
+    const note = !canAfford ? 'NOT ENOUGH MONEY' : this.notice || 'EACH + IS ONE BOX';
     this.track(label(this, L.W / 2, y + 84, note, !canAfford ? RETRO.bad : this.notice ? RETRO.good : RETRO.dim, 'center'));
   }
 

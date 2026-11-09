@@ -3,7 +3,8 @@ import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
 import { getAppliance, type ApplianceId } from '../data/appliances';
-import { BLENDER, COFFEE_MACHINE, drawBlender, drawBlenderGlass, drawCoffeeMachine } from '../art/appliances';
+import { BLENDER, drawBlender, drawBlenderGlass } from '../art/appliances';
+import { COFFEE_ART, smallCoffeeImage } from '../art/coffeeArt';
 import { formatCents } from '../logic/money';
 import { bigTitle, COLOURS, WIDTH, HEIGHT, backdrop, drawPaper, label, mainButton, titleLabel } from '../ui';
 
@@ -54,15 +55,17 @@ export class CelebrationScene extends Phaser.Scene {
     } else if (data.kind === 'appliance') {
       const appliance = getAppliance(data.applianceId);
       heading(10, 'NEW APPLIANCE', INK_MUTED);
-      const g = this.add.graphics();
-      const machine = data.applianceId === 'coffee' ? COFFEE_MACHINE : BLENDER;
-      const s = 70 / machine.h;
-      if (data.applianceId === 'coffee') drawCoffeeMachine(g, (-machine.w * s) / 2, -48, s);
-      else {
-        drawBlender(g, (-machine.w * s) / 2, -48, s);
-        drawBlenderGlass(g, (-machine.w * s) / 2, -48, s);
+      if (data.applianceId === 'coffee') {
+        const h = 76;
+        const w = (COFFEE_ART.machine.w * h) / COFFEE_ART.machine.h;
+        card.add(smallCoffeeImage(this, Math.round(-w / 2), -50, 'full', h));
+      } else {
+        const g = this.add.graphics();
+        const s = 70 / BLENDER.h;
+        drawBlender(g, (-BLENDER.w * s) / 2, -48, s);
+        drawBlenderGlass(g, (-BLENDER.w * s) / 2, -48, s);
+        card.add(g);
       }
-      card.add(g);
       card.add(titleLabel(this, 0, 114 - PAPER_H / 2, appliance.name, COLOURS.ink, 'center'));
       heading(128, data.applianceId === 'coffee' ? 'ORDER BEANS TO BREW' : 'ORDER FRUIT TO BLEND', INK_GOOD);
     } else {

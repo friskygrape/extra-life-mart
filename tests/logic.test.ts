@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calendarHeading } from '../src/logic/calendar';
 import { flickerSteps, nextFlickerSeconds } from '../src/logic/flicker';
-import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
+import { BOX_SIZE, boxSize, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
 
 const SHELF_PRODUCTS = PRODUCTS.filter((p) => p.kind === 'shelf');
 import { tinyTextWidth } from '../src/art/fontMetrics';
@@ -13,7 +13,9 @@ import { buildRequest, crowdFactor, emptyShelfComment, IDLE_MAX_SECONDS, idleWai
 import { applyBrokeSafeguard, dayProfit, endDay, nothingToSell, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf, totalInStore } from '../src/logic/inventory';
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, orderableProducts, unlockedProducts } from '../src/logic/licences';
-import { buyAppliance, drinksAvailable, pourDrink, startBlend, startBrew, tickAppliances } from '../src/logic/appliances';
+import { POT_CUPS } from '../src/data/appliances';
+import { decanterState } from '../src/logic/appliances';
+import { buyAppliance, drinksAvailable, emptyBlender, pourDrink, startBlend, startBrew, tickAppliances } from '../src/logic/appliances';
 import { customerTender, DENOMINATIONS, formatCents, roundToNickel, tenderBills } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder, receiveOvernight, rushCost } from '../src/logic/orders';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
@@ -1114,7 +1116,8 @@ describe('appliances', () => {
     expect(buyAppliance(s, 'coffee')).toBe(false);
   });
 
-  it('brews a pot of five from one bag of beans, only once the pot is empty', () => {
+  it('brews a pot of three from one bag of beans, only once the pot is empty', () => {
+    expect(POT_CUPS).toBe(3);
     const s = withCoffee();
     expect(startBrew(s)).toBe(false);
     s.stockroom.beans = 2;
@@ -1123,9 +1126,9 @@ describe('appliances', () => {
     tickAppliances(s, 4.9);
     expect(s.coffeePot).toBe(0);
     tickAppliances(s, 0.2);
-    expect(s.coffeePot).toBe(5);
+    expect(s.coffeePot).toBe(POT_CUPS);
     expect(startBrew(s)).toBe(false);
-    for (let i = 0; i < 5; i++) expect(pourDrink(s, 'coffee')).toBe(true);
+    for (let i = 0; i < POT_CUPS; i++) expect(pourDrink(s, 'coffee')).toBe(true);
     expect(pourDrink(s, 'coffee')).toBe(false);
     expect(startBrew(s)).toBe(true);
   });
@@ -1145,12 +1148,35 @@ describe('appliances', () => {
     expect(s.blenderJar).toBeNull();
   });
 
+  it('throws out a finished smoothie to free the blender, but not one still blending', () => {
+    const s = newGame();
+    s.balance = 100000;
+    buyAppliance(s, 'blender');
+    s.stockroom.mango = 1;
+    s.stockroom.pineapple = 1;
+    startBlend(s, 'mango');
+    expect(emptyBlender(s)).toBe(false);
+    tickAppliances(s, 5);
+    expect(startBlend(s, 'pineapple')).toBe(false);
+    expect(emptyBlender(s)).toBe(true);
+    expect(s.stockroom.mango).toBe(0);
+    expect(startBlend(s, 'pineapple')).toBe(true);
+  });
+
+  it('sells beans 6 bags to a box for $24, each bag brewing a pot', () => {
+    expect(boxSize('beans')).toBe(6);
+    expect(boxSize('chips')).toBe(BOX_SIZE);
+    expect(getProduct('beans').wholesale * boxSize('beans')).toBe(2400);
+    // A bag brews one pot, so a cup costs its share of a bag.
+    expect(getProduct('coffee').wholesale).toBe(Math.round(getProduct('beans').wholesale / POT_CUPS));
+  });
+
   it('counts what could be served from the pot and the beans', () => {
     const s = withCoffee();
     expect(drinksAvailable(s, 'coffee')).toBe(0);
-    s.coffeePot = 3;
+    s.coffeePot = 2;
     s.stockroom.beans = 2;
-    expect(drinksAvailable(s, 'coffee')).toBe(13);
+    expect(drinksAvailable(s, 'coffee')).toBe(2 + 2 * POT_CUPS);
     expect(drinksAvailable(s, 'smoothie_mango')).toBe(0);
   });
 
@@ -1158,7 +1184,7 @@ describe('appliances', () => {
     const s = withCoffee();
     s.unlocked = ['coffee', 'beans'];
     for (let i = 0; i < 100; i++) expect(buildRequest(s).wants).toEqual([]);
-    s.coffeePot = 5;
+    s.coffeePot = POT_CUPS;
     const wants = buildRequest(s).wants;
     expect(wants.length).toBeGreaterThan(0);
     expect(wants.every((w) => w === 'coffee')).toBe(true);
@@ -1171,11 +1197,11 @@ describe('appliances', () => {
 
   it('a drink taken back goes back into the pot or jar', () => {
     const s = withCoffee();
-    s.coffeePot = 4;
+    s.coffeePot = POT_CUPS - 1;
     returnItem(s, 'coffee');
-    expect(s.coffeePot).toBe(5);
+    expect(s.coffeePot).toBe(POT_CUPS);
     returnItem(s, 'coffee');
-    expect(s.coffeePot).toBe(5);
+    expect(s.coffeePot).toBe(POT_CUPS);
     expect(s.shelves.every((shelf) => shelf.productId !== 'coffee')).toBe(true);
   });
 });
@@ -1196,5 +1222,20 @@ describe('the appliance bay replacing the bottom shelves', () => {
     expect(loaded.stockroom.jerky).toBe(8);
     expect(loaded.balance).toBe(500 + 15000);
     expect(loaded.appliances).toEqual([]);
+  });
+});
+
+describe('the coffee pot', () => {
+  it('fills through every state while it brews, then shows what is left', () => {
+    expect(decanterState(0, 0)).toBe('empty');
+    expect(decanterState(0, 4.9)).toBe('empty');
+    expect(decanterState(0, 3.5)).toBe('low');
+    expect(decanterState(0, 2.5)).toBe('half');
+    expect(decanterState(0, 1.5)).toBe('three_quarter');
+    expect(decanterState(0, 0.5)).toBe('full');
+    expect(decanterState(POT_CUPS, 0)).toBe('full');
+    // One cup left is never shown as empty, and a part-full pot never as full
+    expect(decanterState(1, 0)).not.toBe('empty');
+    expect(decanterState(POT_CUPS - 1, 0)).not.toBe('full');
   });
 });

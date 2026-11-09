@@ -25,8 +25,9 @@ import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, cardSpot, portraitX, receiptHeight, tenderLayout } from '../layout';
 import { billImage } from '../art/bills';
 import { COMPUTER, addComputer, type ComputerParts } from '../art/computer';
-import { BLENDER, COFFEE_COLOUR, COFFEE_MACHINE, SMOOTHIE_COLOURS, drawBlender, drawBlenderGlass, drawCoffeeMachine } from '../art/appliances';
-import { BREW_SECONDS, POT_CUPS, type ApplianceId } from '../data/appliances';
+import { BLENDER, SMOOTHIE_COLOURS, drawBlender, drawBlenderGlass } from '../art/appliances';
+import { COFFEE_ART, decanterState, smallCoffeeImage } from '../art/coffeeArt';
+import { POT_CUPS, type ApplianceId } from '../data/appliances';
 import { applianceFor, owns, pourDrink, tickAppliances } from '../logic/appliances';
 import { session } from '../session';
 import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel, titleLabel } from '../ui';
@@ -820,7 +821,7 @@ export class ShackScene extends Phaser.Scene {
       const owned = owns(st, bay.id);
       const g = this.add.graphics().setDepth(5.2);
       this.bayArt.push(g);
-      const machine = bay.id === 'coffee' ? COFFEE_MACHINE : BLENDER;
+      const machine = BLENDER;
       const s = Math.min(1.2, roomH / machine.h);
       const x = Math.round(bayLeft(i) + (bayWidth(i) - machine.w * s) / 2);
       const y = Math.round(labelY - 2 - machine.h * s);
@@ -828,11 +829,12 @@ export class ShackScene extends Phaser.Scene {
       let right = '';
       if (bay.id === 'coffee') {
         const brewing = st.brewLeft > 0;
-        drawCoffeeMachine(g, x, y, s, brewing);
-        const c = COFFEE_MACHINE.carafe;
-        const level = brewing ? 1 - st.brewLeft / BREW_SECONDS : st.coffeePot / POT_CUPS;
-        const h = c.h * level;
-        if (owned && h > 0) g.fillStyle(COFFEE_COLOUR).fillRect(x + c.x * s, y + (c.y + c.h - h) * s, c.w * s, h * s);
+        // The user's machine, shrunk to fit, with its pot showing how full it is
+        const h = Math.round(roomH);
+        const w = (COFFEE_ART.machine.w * h) / COFFEE_ART.machine.h;
+        const image = smallCoffeeImage(this, Math.round(bayLeft(i) + (bayWidth(i) - w) / 2), labelY - 2 - h, decanterState(st.coffeePot, st.brewLeft), h).setDepth(5.2);
+        if (!owned) image.setAlpha(0.35);
+        this.bayArt.push(image);
         line = 'COFFEE';
         right = !owned ? '' : brewing ? 'BREWING' : `${st.coffeePot}/${POT_CUPS} CUPS`;
       } else {

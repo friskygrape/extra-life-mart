@@ -17,6 +17,8 @@ export interface Product {
   retail: number;
   /** Cost to unlock, in cents. Shelf products without one are available from the start. */
   licence?: number;
+  /** How many come in a box when ordered, if not the usual shelf-full. */
+  box?: number;
 }
 
 export const PRODUCTS: Product[] = [
@@ -33,12 +35,13 @@ export const PRODUCTS: Product[] = [
   { id: 'lemon', name: 'LEMONADE', tag: 'drinks', kind: 'shelf', wholesale: 150, retail: 819, licence: 45000 },
   { id: 'shave', name: 'RAINBOW ICE', tag: 'frozen', kind: 'shelf', wholesale: 170, retail: 959, licence: 60000 },
   // Made at the appliances. Their cost is what their ingredients cost per drink.
-  { id: 'coffee', name: 'COFFEE', tag: 'hot', kind: 'drink', wholesale: 15, retail: 199 },
+  { id: 'coffee', name: 'COFFEE', tag: 'hot', kind: 'drink', wholesale: 133, retail: 429 },
   { id: 'smoothie_mango', name: 'MANGO SMOOTHIE', tag: 'drinks', kind: 'drink', wholesale: 150, retail: 549 },
   { id: 'smoothie_pineapple', name: 'PINEAPPLE SMOOTHIE', tag: 'drinks', kind: 'drink', wholesale: 150, retail: 549 },
   { id: 'smoothie_watermelon', name: 'WATERMELON SMOOTHIE', tag: 'drinks', kind: 'drink', wholesale: 150, retail: 549 },
   // What the drinks are made from
-  { id: 'beans', name: 'COFFEE BEANS', tag: 'coffee', kind: 'ingredient', wholesale: 75, retail: 0 },
+  // A bag brews one pot of 3 cups, and they come 6 bags to a box.
+  { id: 'beans', name: 'COFFEE BEANS', tag: 'coffee', kind: 'ingredient', wholesale: 400, retail: 0, box: 6 },
   { id: 'mango', name: 'MANGO', tag: 'fruit', kind: 'ingredient', wholesale: 150, retail: 0 },
   { id: 'pineapple', name: 'PINEAPPLE', tag: 'fruit', kind: 'ingredient', wholesale: 150, retail: 0 },
   { id: 'watermelon', name: 'WATERMELON', tag: 'fruit', kind: 'ingredient', wholesale: 150, retail: 0 },
@@ -79,3 +82,5 @@ export function shelfLabelLines(product: Pick<Product, 'name'>, rightText: strin
 export const SHELF_CAPACITY = 12;
 /** Stock is ordered in boxes that fill exactly one shelf. */
 export const BOX_SIZE = SHELF_CAPACITY;
+/** How many of a product come in one box. */
+export const boxSize = (id: string) => getProduct(id).box ?? BOX_SIZE;

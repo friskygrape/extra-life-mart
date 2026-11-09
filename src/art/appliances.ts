@@ -97,6 +97,16 @@ const ITEMS: Record<string, (c: Ctx) => void> = {
   smoothie_mango: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_mango),
   smoothie_pineapple: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_pineapple),
   smoothie_watermelon: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_watermelon),
+  // A paper coffee filter, folded into a cone
+  filter: (c) => {
+    for (let y = 14; y < 36; y++) {
+      const half = Math.round(13 - (y - 14) * 0.5);
+      rect(c, '#fbf6ec', 18 - half, y, half * 2, 1);
+      rect(c, '#e2d9c8', 18 + half - 3, y, 3, 1);
+    }
+    for (let x = 8; x < 28; x += 4) rect(c, '#e8dfcf', x, 15, 1, 10);
+    rect(c, '#ffffff', 6, 14, 24, 1);
+  },
   // A burlap sack of beans, tied at the top
   beans: (c) => {
     for (let y = 12; y < 44; y++) {
@@ -166,49 +176,6 @@ export function createDrinkTextures(scene: Phaser.Scene): void {
 // ---- The machines, drawn on Graphics -------------------------------------
 
 const INK = 0x1b1d28;
-
-/** The coffee machine is 36 × 44 units. Where its working parts are: */
-export const COFFEE_MACHINE = {
-  w: 36,
-  h: 44,
-  /** The glass carafe's inside, where the coffee shows. */
-  carafe: { x: 6, y: 24, w: 13, h: 14 },
-  /** Where the filter basket sits, and the coffee drips from. */
-  basket: { x: 5, y: 12, w: 16, h: 4 },
-  spout: { x: 12.5, y: 16 },
-  button: { x: 27, y: 22, r: 3 },
-};
-
-/** Draws the coffee machine, its top-left at (x, y), each unit `s` game pixels. The coffee goes on top. */
-export function drawCoffeeMachine(g: Phaser.GameObjects.Graphics, x: number, y: number, s: number, on = false) {
-  const r = (fx: number, fy: number, w: number, h: number, colour: number, alpha = 1) => g.fillStyle(colour, alpha).fillRect(x + fx * s, y + fy * s, w * s, h * s);
-  // Base and warming plate
-  r(0, 40, 36, 4, INK);
-  r(1, 40, 34, 3, 0x3a3f46);
-  r(4, 38, 17, 2, 0x2a2d33);
-  // Tower and hood
-  r(21, 1, 15, 40, INK);
-  r(22, 2, 13, 38, 0xd9534a);
-  r(22, 2, 3, 38, 0xe8786e);
-  r(32, 2, 3, 38, 0xb43e36);
-  r(1, 1, 22, 12, INK);
-  r(2, 2, 21, 10, 0xd9534a);
-  r(2, 2, 21, 2, 0xe8786e);
-  // Filter basket under the hood
-  r(4, 12, 18, 5, INK);
-  r(5, 12, 16, 4, 0x2a2d33);
-  // ON button, lit while brewing
-  const b = COFFEE_MACHINE.button;
-  g.fillStyle(INK).fillCircle(x + b.x * s, y + b.y * s, (b.r + 1) * s);
-  g.fillStyle(on ? 0x7fe05a : 0x5a6a52).fillCircle(x + b.x * s, y + b.y * s, b.r * s);
-  // The carafe: glass with a handle
-  const cf = COFFEE_MACHINE.carafe;
-  r(cf.x - 1, cf.y - 2, cf.w + 2, cf.h + 3, INK);
-  r(cf.x, cf.y - 1, cf.w, cf.h + 1, 0xd8eef3, 0.95);
-  r(cf.x + cf.w + 1, cf.y + 2, 2, 8, INK);
-  r(cf.x + cf.w + 2, cf.y + 3, 1, 6, 0x2a2d33);
-  r(cf.x + 1, cf.y, 2, cf.h - 2, 0xffffff, 0.7);
-}
 
 /** The blender is 30 × 52 units. Where its jar is: */
 export const BLENDER = {
