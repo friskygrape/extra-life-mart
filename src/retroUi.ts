@@ -97,8 +97,7 @@ export function retroButton(
 }
 
 /** A window with a blue title bar and an X in a box, which closes it. */
-export function retroWindow(scene: Phaser.Scene, y: number, h: number, title: string, onClose: () => void, w: number = WIDTH - 4): { destroy(): void } {
-  const x = 2;
+export function retroWindow(scene: Phaser.Scene, y: number, h: number, title: string, onClose: () => void, w: number = WIDTH - 4, x = 2): { destroy(): void } {
   const frame = bevel(scene, x, y, w, h, true);
   const barX = x + 3;
   const barY = y + 3;
