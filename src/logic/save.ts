@@ -1,7 +1,8 @@
 import { rollWeather } from '../data/weather';
 import { weekdayIndex } from './calendar';
 import { START_REPUTATION } from './reputation';
-import { SAVE_VERSION, type DayStats, type GameState } from './state';
+import { SHELF_ROWS } from '../data/shelves';
+import { SAVE_VERSION, noAppliances, type DayStats, type GameState } from './state';
 
 const SAVE_KEY = 'extra-life-mart-save';
 
@@ -38,8 +39,34 @@ function fromVersion4(old: GameState): GameState {
 
 /** Anyone past the first day has already opened up, so they don't need the first-day guide. */
 function fromVersion5(old: GameState): GameState {
-  return { ...old, version: SAVE_VERSION, hasOpened: old.day > 1 };
+  return { ...old, version: 6, hasOpened: old.day > 1 };
 }
+
+/**
+ * The bottom row of shelves became the appliance bay. Anyone who repaired it gets its stock back in the
+ * stockroom and the repair refunded.
+ */
+function fromVersion6(old: GameState): GameState {
+  const stockroom = { ...old.stockroom };
+  const shelves = old.shelves.filter((shelf) => {
+    const inBay = shelf.id.startsWith(`shelf-${SHELF_ROWS}-`);
+    if (inBay && shelf.productId && shelf.qty > 0) stockroom[shelf.productId] = (stockroom[shelf.productId] ?? 0) + shelf.qty;
+    return !inBay;
+  });
+  const refund = old.rowsOwned > SHELF_ROWS ? BAY_ROW_REFUND : 0;
+  return {
+    ...old,
+    version: SAVE_VERSION,
+    stockroom,
+    shelves,
+    rowsOwned: Math.min(old.rowsOwned, SHELF_ROWS),
+    balance: old.balance + refund,
+    ...noAppliances(),
+  };
+}
+
+/** What repairing the third row used to cost. */
+const BAY_ROW_REFUND = 15000;
 
 /** Returns null when there's no save, or it's unreadable or from a version we can't convert. */
 export function loadGame(store: SaveStore): GameState | null {
@@ -48,8 +75,9 @@ export function loadGame(store: SaveStore): GameState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as GameState;
     if (parsed.version === SAVE_VERSION) return parsed;
-    if (parsed.version === 5) return fromVersion5(parsed);
-    return parsed.version === 4 ? fromVersion5(fromVersion4(parsed)) : null;
+    if (parsed.version === 6) return fromVersion6(parsed);
+    if (parsed.version === 5) return fromVersion6(fromVersion5(parsed));
+    return parsed.version === 4 ? fromVersion6(fromVersion5(fromVersion4(parsed))) : null;
   } catch {
     return null;
   }

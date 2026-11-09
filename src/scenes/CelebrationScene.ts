@@ -2,10 +2,12 @@ import Phaser from 'phaser';
 import { ITEM_SCALE } from '../art/textures';
 import { sfx } from '../audio';
 import { getProduct } from '../data/products';
+import { getAppliance, type ApplianceId } from '../data/appliances';
+import { BLENDER, COFFEE_MACHINE, drawBlender, drawBlenderGlass, drawCoffeeMachine } from '../art/appliances';
 import { formatCents } from '../logic/money';
 import { bigTitle, COLOURS, WIDTH, HEIGHT, backdrop, drawPaper, label, mainButton, titleLabel } from '../ui';
 
-export type CelebrationData = { kind: 'licence'; productId: string } | { kind: 'shelves'; row: number };
+export type CelebrationData = { kind: 'licence'; productId: string } | { kind: 'shelves'; row: number } | { kind: 'appliance'; applianceId: ApplianceId };
 
 const PAPER_W = 168;
 const PAPER_H = 150;
@@ -49,6 +51,20 @@ export class CelebrationScene extends Phaser.Scene {
       card.add(this.add.image(0, -8, `item_${product.id}`).setScale(ITEM_SCALE * 4));
       card.add(titleLabel(this, 0, 114 - PAPER_H / 2, product.name, COLOURS.ink, 'center'));
       heading(128, `+${formatCents(product.retail - product.wholesale)} A SALE`, INK_GOOD);
+    } else if (data.kind === 'appliance') {
+      const appliance = getAppliance(data.applianceId);
+      heading(10, 'NEW APPLIANCE', INK_MUTED);
+      const g = this.add.graphics();
+      const machine = data.applianceId === 'coffee' ? COFFEE_MACHINE : BLENDER;
+      const s = 70 / machine.h;
+      if (data.applianceId === 'coffee') drawCoffeeMachine(g, (-machine.w * s) / 2, -48, s);
+      else {
+        drawBlender(g, (-machine.w * s) / 2, -48, s);
+        drawBlenderGlass(g, (-machine.w * s) / 2, -48, s);
+      }
+      card.add(g);
+      card.add(titleLabel(this, 0, 114 - PAPER_H / 2, appliance.name, COLOURS.ink, 'center'));
+      heading(128, data.applianceId === 'coffee' ? 'ORDER BEANS TO BREW' : 'ORDER FRUIT TO BLEND', INK_GOOD);
     } else {
       heading(10, 'SHELVES REPAIRED!', INK_MUTED);
       card.add(this.add.image(0, -8, 'new_shelf').setScale(2));
@@ -61,7 +77,7 @@ export class CelebrationScene extends Phaser.Scene {
     this.tweens.add({ targets: card, scale: 1, duration: 420, ease: 'Back.easeOut' });
 
     this.throwConfetti();
-    bigTitle(this, cx, PAPER_Y - 22, data.kind === 'licence' ? 'UNLOCKED!' : 'REPAIRED!', COLOURS.gold, 'center').setDepth(5);
+    bigTitle(this, cx, PAPER_Y - 22, data.kind === 'shelves' ? 'REPAIRED!' : 'UNLOCKED!', COLOURS.gold, 'center').setDepth(5);
 
     const done = mainButton(this, PAPER_Y + PAPER_H + 24, 'NICE!', () => this.close(), sfx.click);
     done.rect.setDepth(5);

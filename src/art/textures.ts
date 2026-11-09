@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { L, drawerLayout } from '../layout';
+import { SHELF_ROWS } from '../data/shelves';
+import { createDrinkTextures } from './appliances';
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -329,12 +331,16 @@ function drawShop(scene: Phaser.Scene) {
 
     // The shelf wall and its shelves
     drawPanels(c, 0, L.shelfTop, W, L.rowH * 3);
-    for (let row = 0; row < 3; row++) {
+    for (let row = 0; row < SHELF_ROWS; row++) {
       for (let col = 0; col < 4; col++) {
         const cellW = columnX(col + 1) - columnX(col);
         drawShelfCubby(c, columnX(col), L.shelfTop + row * L.rowH, cellW, L.rowH);
       }
     }
+    // The bottom row: two wide bays for the appliances
+    const bayY = L.shelfTop + SHELF_ROWS * L.rowH;
+    drawShelfCubby(c, 0, bayY, columnX(2), L.rowH);
+    drawShelfCubby(c, columnX(2), bayY, W - columnX(2), L.rowH);
 
   });
   for (let col = 0; col < 4; col++) drawShelfGlow(scene, columnX(col + 1) - columnX(col), L.rowH);
@@ -1099,6 +1105,7 @@ function drawInfoBoard(scene: Phaser.Scene) {
 }
 
 export function createTextures(scene: Phaser.Scene): void {
+  createDrinkTextures(scene);
   drawShop(scene);
   drawDrawerTray(scene);
   drawProps(scene);

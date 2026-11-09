@@ -4,9 +4,11 @@ import { sfx } from '../audio';
 import { BOX_SIZE, type Product } from '../data/products';
 import { TAG_ORDER, TAGS, type TagId } from '../data/tags';
 import { SHELF_ROW_PRICES } from '../data/shelves';
+import { APPLIANCES } from '../data/appliances';
+import { buyAppliance, owns } from '../logic/appliances';
 import { WEATHER } from '../data/weather';
 import { totalInStore } from '../logic/inventory';
-import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, unlockedProducts } from '../logic/licences';
+import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, orderableProducts } from '../logic/licences';
 import { formatCents } from '../logic/money';
 import { RUSH_FEE, cartCost, placeOrder, rushCost, type Cart } from '../logic/orders';
 import { RETRO, TITLE_H, bevel, retroButton, retroWindow } from '../retroUi';
@@ -192,7 +194,7 @@ export class ComputerScene extends Phaser.Scene {
 
   private renderInventory() {
     const { state } = session;
-    const groups = groupByTag(unlockedProducts(state).sort((a, b) => totalInStore(state, b.id) - totalInStore(state, a.id)));
+    const groups = groupByTag(orderableProducts(state).sort((a, b) => totalInStore(state, b.id) - totalInStore(state, a.id)));
     this.track(bevel(this, fieldX(), contentY(), fieldW(), HEADER_H, true));
     this.track(tinyLabel(this, fieldX() + 4, contentY() + 3, 'SNACK', RETRO.ink));
     this.track(tinyLabel(this, fieldRight() - 12, contentY() + 3, 'IN STOCK', RETRO.ink, 'right'));
@@ -215,7 +217,7 @@ export class ComputerScene extends Phaser.Scene {
   // ---- Order stock --------------------------------------------------------
 
   private renderOrder() {
-    const rows = this.groupRows(groupByTag(unlockedProducts(session.state)), ROW_H);
+    const rows = this.groupRows(groupByTag(orderableProducts(session.state)), ROW_H);
     const list = this.field(contentY(), orderFooterY() - contentY() - 3, rows.height);
     this.addHeadings(list, rows.headings);
     rows.items.forEach(({ product, y }) => this.productRow(product, y, list));
@@ -229,7 +231,7 @@ export class ComputerScene extends Phaser.Scene {
     list.add(this.add.image(rowX(20), y + 17, `item_${product.id}`).setScale(ITEM_SCALE));
     list.add(titleLabel(this, rowX(34), y + 2, product.name, RETRO.ink));
     list.add(tinyLabel(this, rowX(34), y + 13, `${BOX_SIZE} FOR ${formatCents(product.wholesale * BOX_SIZE)}`, RETRO.good));
-    list.add(tinyLabel(this, rowX(34), y + 23, coming > 0 ? `HAVE ${have} COMING ${coming}` : `SELL ${formatCents(product.retail)} HAVE ${have}`, RETRO.dim));
+    list.add(tinyLabel(this, rowX(34), y + 23, coming > 0 ? `HAVE ${have} COMING ${coming}` : product.kind === 'ingredient' ? `HAVE ${have}` : `SELL ${formatCents(product.retail)} HAVE ${have}`, RETRO.dim));
     const right = fieldRight();
     list.addButton(retroButton(this, right - 74, y + 5, 24, 24, '-', list.guard(() => this.change(product.id, -BOX_SIZE)), null)).setEnabled(boxes > 0);
     list.add(label(this, right - 42, y + 13, String(boxes), boxes ? RETRO.ink : RETRO.dim, 'center'));
@@ -317,7 +319,25 @@ export class ComputerScene extends Phaser.Scene {
         this.celebrate({ kind: 'shelves', row: rowNumber });
       }, null)).setEnabled(isNext && price <= state.balance);
     });
-    const soonY = contentY() + 3 + SHELF_ROW_PRICES.length * ROW_H + 6;
+    // The appliances for the bottom row
+    const applianceY = contentY() + 3 + SHELF_ROW_PRICES.length * ROW_H + 6;
+    this.track(this.add.rectangle(fieldX() + 4, applianceY - 4, fieldW() - 8, 1, RETRO.shade).setOrigin(0));
+    APPLIANCES.forEach((appliance, i) => {
+      const y = applianceY + i * ROW_H;
+      this.track(titleLabel(this, fieldX() + 5, y + 6, appliance.name, RETRO.ink));
+      this.track(tinyLabel(this, fieldX() + 5, y + 18, appliance.blurb, RETRO.good));
+      if (owns(state, appliance.id)) {
+        this.track(label(this, fieldRight() - 33, y + 12, 'OWNED', RETRO.dim, 'center'));
+        return;
+      }
+      this.track(retroButton(this, fieldRight() - 64, y + 3, 60, 28, formatCents(appliance.price), () => {
+        if (!buyAppliance(state, appliance.id)) return;
+        if (session.phase === 'morning') session.save();
+        this.render();
+        this.celebrate({ kind: 'appliance', applianceId: appliance.id });
+      }, null)).setEnabled(appliance.price <= state.balance);
+    });
+    const soonY = applianceY + APPLIANCES.length * ROW_H + 6;
     this.track(this.add.rectangle(fieldX() + 4, soonY - 4, fieldW() - 8, 1, RETRO.shade).setOrigin(0));
     COMING_SOON.forEach(({ name, icon }, i) => {
       const y = soonY + i * ROW_H;

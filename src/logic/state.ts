@@ -43,9 +43,19 @@ export interface GameState {
   totalServed: number;
   /** The store has opened at least once, so the first-day guide is finished. */
   hasOpened: boolean;
+  /** The appliances bought for the bottom row. */
+  appliances: string[];
+  /** Cups of coffee left in the pot. */
+  coffeePot: number;
+  /** Seconds until the coffee in the machine is brewed, or 0. */
+  brewLeft: number;
+  /** The smoothie in the blender, being blended or ready to pour. */
+  blenderJar: string | null;
+  /** Seconds until the blender finishes, or 0. */
+  blendLeft: number;
 }
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export function emptyStats(): DayStats {
   return { revenue: 0, tips: 0, orderSpend: 0, upgradeSpend: 0, overpaid: 0, missedSales: 0, customersServed: 0 };
@@ -67,7 +77,7 @@ export function newGame(): GameState {
     rowsOwned: 1,
     stats: emptyStats(),
     bestProfit: null,
-    unlocked: PRODUCTS.filter((p) => !p.licence).map((p) => p.id),
+    unlocked: PRODUCTS.filter((p) => p.kind === 'shelf' && !p.licence).map((p) => p.id),
     weather: 'sunny',
     // A clear first forecast, so the TV and soda demand teach themselves on day 2.
     forecast: 'heatwave',
@@ -76,5 +86,11 @@ export function newGame(): GameState {
     closed: false,
     totalServed: 0,
     hasOpened: false,
+    ...noAppliances(),
   };
+}
+
+/** A store with no appliances yet, and nothing in them. */
+export function noAppliances(): Pick<GameState, 'appliances' | 'coffeePot' | 'brewLeft' | 'blenderJar' | 'blendLeft'> {
+  return { appliances: [], coffeePot: 0, brewLeft: 0, blenderJar: null, blendLeft: 0 };
 }

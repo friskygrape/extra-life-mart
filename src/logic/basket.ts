@@ -24,16 +24,22 @@ function share(wants: string[], table: string[]) {
   const asked = tally(wants);
   const exact = new Map<string, number>();
   const byTag = new Map<TagId, number>();
+  let unmatched = 0;
   for (const [id, qty] of tally(table)) {
     const own = Math.min(qty, asked.get(id) ?? 0);
     exact.set(id, own);
     const extra = qty - own;
     if (extra > 0) {
+      // Only shelf products stand in for a kind; a made drink has to be asked for by name.
+      if (getProduct(id).kind !== 'shelf') {
+        unmatched += extra;
+        continue;
+      }
       const tag = getProduct(id).tag;
       byTag.set(tag, (byTag.get(tag) ?? 0) + extra);
     }
   }
-  const fits = [...byTag].every(([tag, qty]) => qty <= (asked.get(tagWant(tag)) ?? 0));
+  const fits = unmatched === 0 && [...byTag].every(([tag, qty]) => qty <= (asked.get(tagWant(tag)) ?? 0));
   return { asked, exact, byTag, fits };
 }
 
@@ -70,7 +76,7 @@ export function requestLines(wants: string[], table: string[]): RequestLine[] {
 
 /** Products of this kind with some left over, given how many of each are still free. */
 export function tagChoices(free: Map<string, number>, tag: TagId): string[] {
-  return PRODUCTS.filter((p) => p.tag === tag && (free.get(p.id) ?? 0) > 0).map((p) => p.id);
+  return PRODUCTS.filter((p) => p.kind === 'shelf' && p.tag === tag && (free.get(p.id) ?? 0) > 0).map((p) => p.id);
 }
 
 /** What's on the shelves and not already promised to one of the customer's exact wants. */

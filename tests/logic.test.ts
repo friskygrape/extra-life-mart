@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { calendarHeading } from '../src/logic/calendar';
 import { flickerSteps, nextFlickerSeconds } from '../src/logic/flicker';
 import { BOX_SIZE, getProduct, PRODUCTS, SHELF_CAPACITY, shelfLabelLines } from '../src/data/products';
+
+const SHELF_PRODUCTS = PRODUCTS.filter((p) => p.kind === 'shelf');
 import { tinyTextWidth } from '../src/art/fontMetrics';
 import { canAddToTable, isOrderComplete, lineName, requestLines, tagWant, wantTag } from '../src/logic/basket';
 import { computeLayout, MIN_H, MIN_W } from '../src/layout';
@@ -10,7 +12,8 @@ import { checkCard, checkChange, completeSale, saleTotal } from '../src/logic/ch
 import { buildRequest, crowdFactor, emptyShelfComment, IDLE_MAX_SECONDS, idleWait, nextSpawnDelay, pickLook, shortenWhenIdle, snackDemand } from '../src/logic/customers';
 import { applyBrokeSafeguard, dayProfit, endDay, nothingToSell, STARTER_BOX } from '../src/logic/day';
 import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf, totalInStore } from '../src/logic/inventory';
-import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice } from '../src/logic/licences';
+import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, orderableProducts, unlockedProducts } from '../src/logic/licences';
+import { buyAppliance, drinksAvailable, pourDrink, startBlend, startBrew, tickAppliances } from '../src/logic/appliances';
 import { customerTender, DENOMINATIONS, formatCents, roundToNickel, tenderBills } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder, receiveOvernight, rushCost } from '../src/logic/orders';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
@@ -472,7 +475,7 @@ describe('licences', () => {
   });
   it('each licence earns more per sale than the one before, and more than any starter', () => {
     const margin = (id: string) => getProduct(id).retail - getProduct(id).wholesale;
-    const starters = PRODUCTS.filter((p) => !p.licence).map((p) => margin(p.id));
+    const starters = SHELF_PRODUCTS.filter((p) => !p.licence).map((p) => margin(p.id));
     let previous = Math.max(...starters);
     for (const locked of lockedProducts(newGame())) {
       expect(margin(locked.id)).toBeGreaterThan(previous);
@@ -494,14 +497,13 @@ describe('shelf rows', () => {
     expect(s.rowsOwned).toBe(2);
     expect(s.stats.upgradeSpend).toBe(price);
   });
-  it('refuses a row you cannot afford, and stops at three', () => {
+  it('refuses a row you cannot afford, and stops at two, above the appliances', () => {
     const s = newGame();
     s.balance = 100;
     expect(buyShelfRow(s)).toBe(false);
     s.balance = 1000000;
     buyShelfRow(s);
-    buyShelfRow(s);
-    expect(s.shelves).toHaveLength(12);
+    expect(s.shelves).toHaveLength(8);
     expect(nextRowPrice(s)).toBeNull();
     expect(buyShelfRow(s)).toBe(false);
   });
@@ -633,7 +635,7 @@ describe('boxes and margins', () => {
   });
   it('every snack earns about 50% more than before', () => {
     const before: Record<string, number> = { chips: 69, soda: 59, choco: 79, noodle: 99, jerky: 169, icepop: 199, popcorn: 229, coconut: 269, pie: 319, taco: 379, lemon: 449, shave: 529 };
-    for (const p of PRODUCTS) {
+    for (const p of SHELF_PRODUCTS) {
       const ratio = (p.retail - p.wholesale) / before[p.id];
       expect(ratio).toBeGreaterThanOrEqual(1.45);
       expect(ratio).toBeLessThanOrEqual(1.6);
@@ -663,7 +665,7 @@ describe('shelf labels', () => {
   });
 
   it('show every full name on the narrowest shelf, with room for its price', () => {
-    for (const p of PRODUCTS) {
+    for (const p of SHELF_PRODUCTS) {
       const price = formatCents(p.retail);
       const { lines, rightLine } = shelfLabelLines(p, price, narrowest);
       expect(lines.join(' ').trim()).toBe(p.name);
@@ -1090,5 +1092,109 @@ describe('first-day guide', () => {
     const s = newGame();
     s.stockroom = {};
     expect(onboardingStep(s, 'morning')).toBeNull();
+  });
+});
+
+describe('appliances', () => {
+  const withCoffee = () => {
+    const s = newGame();
+    s.balance = 100000;
+    expect(buyAppliance(s, 'coffee')).toBe(true);
+    return s;
+  };
+
+  it('buying one unlocks its drinks and ingredients, but not for the shelves or licences', () => {
+    const s = withCoffee();
+    expect(s.unlocked).toContain('coffee');
+    expect(s.unlocked).toContain('beans');
+    expect(unlockedProducts(s).map((p) => p.id)).not.toContain('beans');
+    expect(orderableProducts(s).map((p) => p.id)).toContain('beans');
+    expect(orderableProducts(s).map((p) => p.id)).not.toContain('coffee');
+    expect(lockedProducts(s).every((p) => p.kind === 'shelf')).toBe(true);
+    expect(buyAppliance(s, 'coffee')).toBe(false);
+  });
+
+  it('brews a pot of five from one bag of beans, only once the pot is empty', () => {
+    const s = withCoffee();
+    expect(startBrew(s)).toBe(false);
+    s.stockroom.beans = 2;
+    expect(startBrew(s)).toBe(true);
+    expect(s.stockroom.beans).toBe(1);
+    tickAppliances(s, 4.9);
+    expect(s.coffeePot).toBe(0);
+    tickAppliances(s, 0.2);
+    expect(s.coffeePot).toBe(5);
+    expect(startBrew(s)).toBe(false);
+    for (let i = 0; i < 5; i++) expect(pourDrink(s, 'coffee')).toBe(true);
+    expect(pourDrink(s, 'coffee')).toBe(false);
+    expect(startBrew(s)).toBe(true);
+  });
+
+  it('blends one fruit into one smoothie', () => {
+    const s = newGame();
+    s.balance = 100000;
+    buyAppliance(s, 'blender');
+    s.stockroom.mango = 1;
+    expect(startBlend(s, 'pineapple')).toBe(false);
+    expect(startBlend(s, 'mango')).toBe(true);
+    expect(s.stockroom.mango).toBe(0);
+    expect(pourDrink(s, 'smoothie_mango')).toBe(false);
+    tickAppliances(s, 5);
+    expect(pourDrink(s, 'smoothie_pineapple')).toBe(false);
+    expect(pourDrink(s, 'smoothie_mango')).toBe(true);
+    expect(s.blenderJar).toBeNull();
+  });
+
+  it('counts what could be served from the pot and the beans', () => {
+    const s = withCoffee();
+    expect(drinksAvailable(s, 'coffee')).toBe(0);
+    s.coffeePot = 3;
+    s.stockroom.beans = 2;
+    expect(drinksAvailable(s, 'coffee')).toBe(13);
+    expect(drinksAvailable(s, 'smoothie_mango')).toBe(0);
+  });
+
+  it('customers only ask for drinks you could make', () => {
+    const s = withCoffee();
+    s.unlocked = ['coffee', 'beans'];
+    for (let i = 0; i < 100; i++) expect(buildRequest(s).wants).toEqual([]);
+    s.coffeePot = 5;
+    const wants = buildRequest(s).wants;
+    expect(wants.length).toBeGreaterThan(0);
+    expect(wants.every((w) => w === 'coffee')).toBe(true);
+  });
+
+  it('a made drink never stands in for a kind of snack', () => {
+    expect(canAddToTable([tagWant('drinks')], [], 'smoothie_mango')).toBe(false);
+    expect(canAddToTable(['smoothie_mango'], [], 'smoothie_mango')).toBe(true);
+  });
+
+  it('a drink taken back goes back into the pot or jar', () => {
+    const s = withCoffee();
+    s.coffeePot = 4;
+    returnItem(s, 'coffee');
+    expect(s.coffeePot).toBe(5);
+    returnItem(s, 'coffee');
+    expect(s.coffeePot).toBe(5);
+    expect(s.shelves.every((shelf) => shelf.productId !== 'coffee')).toBe(true);
+  });
+});
+
+describe('the appliance bay replacing the bottom shelves', () => {
+  it('refunds the third row and returns its stock from an older save', () => {
+    const old = { ...newGame(), version: 6, rowsOwned: 3, balance: 500 } as GameState;
+    old.shelves = [0, 1, 2].flatMap((row) => [0, 1, 2, 3].map((col) => ({ id: `shelf-${row}-${col}`, productId: null, qty: 0 })));
+    old.shelves[8] = { id: 'shelf-2-0', productId: 'jerky', qty: 7 };
+    old.stockroom = { jerky: 1 };
+    delete (old as Partial<GameState>).appliances;
+    const store = memoryStore();
+    store.setItem('extra-life-mart-save', JSON.stringify(old));
+    const loaded = loadGame(store)!;
+    expect(loaded.version).toBe(SAVE_VERSION);
+    expect(loaded.rowsOwned).toBe(2);
+    expect(loaded.shelves).toHaveLength(8);
+    expect(loaded.stockroom.jerky).toBe(8);
+    expect(loaded.balance).toBe(500 + 15000);
+    expect(loaded.appliances).toEqual([]);
   });
 });

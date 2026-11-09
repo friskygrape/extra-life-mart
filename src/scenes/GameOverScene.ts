@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { unlockedProducts } from '../logic/licences';
 import { sfx } from '../audio';
 import { weekOf } from '../logic/calendar';
 import { formatCents } from '../logic/money';
@@ -41,7 +42,7 @@ export class GameOverScene extends Phaser.Scene {
     row('WEEKS', String(weekOf(daysOpen)));
     row('CUSTOMERS SERVED', String(state.totalServed));
     row('BEST DAY', formatCents(state.bestProfit ?? 0));
-    row('SNACKS LICENSED', String(state.unlocked.length));
+    row('SNACKS LICENSED', String(unlockedProducts(state).length));
 
     label(this, centre, top + 178, 'THE BEACH WILL MISS YOU.', INK_MUTED, 'center');
     label(this, centre, top + 190, 'EVERYONE GETS AN EXTRA LIFE.', COLOURS.ink, 'center');

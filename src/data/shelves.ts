@@ -5,10 +5,10 @@ export interface ShelfSlot {
 }
 
 export const SHELF_COLS = 4;
-export const SHELF_ROWS = 3;
+export const SHELF_ROWS = 2;
 
-/** You start with the first row. These buy the second and third. */
-export const SHELF_ROW_PRICES = [6000, 15000];
+/** You start with the first row. This buys the second. The row below holds the appliances. */
+export const SHELF_ROW_PRICES = [6000];
 
 export const SHELF_SLOTS: ShelfSlot[] = Array.from({ length: SHELF_ROWS }, (_, row) =>
   Array.from({ length: SHELF_COLS }, (_, col) => ({ id: `shelf-${row}-${col}`, col, row })),

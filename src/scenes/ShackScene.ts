@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { MAIN_STYLE, textWidth } from '../art/fontMetrics';
 import { getProduct, shelfLabelLines } from '../data/products';
 import { flickerSteps, nextFlickerSeconds } from '../logic/flicker';
 import { SHELF_ROWS, SHELF_SLOTS, type ShelfSlot } from '../data/shelves';
@@ -24,6 +25,9 @@ import { deliverOrders } from '../logic/orders';
 import { L, bubbleW, bubbleX, bubbleY, cardSpot, portraitX, receiptHeight, tenderLayout } from '../layout';
 import { billImage } from '../art/bills';
 import { COMPUTER, addComputer, type ComputerParts } from '../art/computer';
+import { BLENDER, COFFEE_COLOUR, COFFEE_MACHINE, SMOOTHIE_COLOURS, drawBlender, drawBlenderGlass, drawCoffeeMachine } from '../art/appliances';
+import { BREW_SECONDS, POT_CUPS, type ApplianceId } from '../data/appliances';
+import { applianceFor, owns, pourDrink, tickAppliances } from '../logic/appliances';
 import { session } from '../session';
 import { BUBBLE_PAD, COLOURS, drawBubble, drawPaper, label, tinyLabel, titleLabel } from '../ui';
 
@@ -94,6 +98,18 @@ const NEXT_GUIDE_SECONDS = 0.15;
 const GUIDE_DEPTH = 7.5;
 const SHELF_NOTE = 'REPAIR THESE SHELVES FOR\nMORE SPACE. SELECT UPGRADES\nON THE COMPUTER.';
 const SHELF_NOTE_MS = 4000;
+/** The two halves of the bottom row, and the close-up each one opens. */
+const BAYS: { id: ApplianceId; scene: string; note: string }[] = [
+  { id: 'coffee', scene: 'Coffee', note: 'BUY A COFFEE MACHINE IN\nUPGRADES ON THE COMPUTER.' },
+  { id: 'blender', scene: 'Blender', note: 'BUY A BLENDER IN\nUPGRADES ON THE COMPUTER.' },
+];
+const bayLeft = (i: number) => (i === 0 ? 0 : columnX(2));
+const bayWidth = (i: number) => (i === 0 ? columnX(2) : L.W - columnX(2));
+const bayTop = () => L.shelfTop + SHELF_ROWS * L.rowH;
+/** Each line on the customer's list, and the extra a long name takes when it wraps onto a second line. */
+const LIST_LINE_H = 11;
+const WRAPPED_EXTRA = 10;
+const listLineH = (text: string) => (textWidth(text, MAIN_STYLE) > bubbleW() - BUBBLE_PAD * 2 ? LIST_LINE_H + WRAPPED_EXTRA : LIST_LINE_H);
 const COMPUTER_W = COMPUTER.w;
 /** The keyboard's front edge sits a little above the counter's bottom. */
 const computerTop = () => Math.round(L.counterBottom - 5 - COMPUTER.h);
@@ -224,6 +240,9 @@ export class ShackScene extends Phaser.Scene {
   private soldOutShelf: string | null = null;
   private soldOutPending: string | null = null;
   private computerTipDone = false;
+  /** What the appliance bay shows, redrawn when its status changes. */
+  private bayArt: Phaser.GameObjects.GameObject[] = [];
+  private bayStatus = '';
   /** The computer's parts, kept for animating. */
   private computer!: ComputerParts;
 
@@ -322,12 +341,18 @@ export class ShackScene extends Phaser.Scene {
         .setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
         .on('pointerup', () => this.tapSlot(slot));
     });
+    BAYS.forEach((bay, i) => {
+      this.add.rectangle(bayLeft(i), bayTop(), bayWidth(i), L.rowH, 0xffffff, 0)
+        .setOrigin(0).setDepth(8).setInteractive({ useHandCursor: true })
+        .on('pointerup', () => this.tapBay(bay));
+    });
 
     this.bannerBack = this.add.rectangle(0, 0, 0, 0, BANNER_BG, 0.88).setOrigin(0.5, 0).setDepth(6.8).setVisible(false);
     this.banner = label(this, windowX + Math.floor(windowW / 2), windowY + 3, '', COLOURS.white, 'center').setDepth(7).setVisible(false);
     this.banner.setMaxWidth(windowW - 10);
 
     session.events.on('shelves-changed', this.refreshShelves, this);
+    session.events.on('pour-drink', this.serveDrink, this);
     session.events.on('begin-day', this.beginDay, this);
     session.events.on('say', this.say, this);
     session.events.on('receipt-feed', this.feedReceipt, this);
@@ -701,10 +726,10 @@ export class ShackScene extends Phaser.Scene {
   }
 
   /** Over the broken row: what it would take to fix it. */
-  private showShelfNote(row: number) {
+  private showShelfNote(row: number, text = SHELF_NOTE) {
     sfx.click();
     this.shelfNoteTimer?.remove();
-    this.shelfNoteText.setText(SHELF_NOTE);
+    this.shelfNoteText.setText(text);
     const w = Math.ceil(this.shelfNoteText.width) + 8;
     const h = Math.ceil(this.shelfNoteText.height) + 5;
     const x = Math.floor((L.W - w) / 2);
@@ -732,13 +757,18 @@ export class ShackScene extends Phaser.Scene {
     if (!takeFromShelf(session.state, slot.id, productId)) return;
     if (session.state.day === 1 && shelfIsEmpty(slot.id)) this.soldOutPending = slot.id;
     sfx.pickUp();
+    this.addToTable(customer, productId, slotLeft(slot) + slotWidth(slot) / 2, slotTop(slot) + 20);
+    this.refreshShelves();
+  }
+
+  /** Puts an item on the counter for the customer, flying in from (x, y), and starts payment once the order is done. */
+  private addToTable(customer: Customer, productId: string, x: number, y: number) {
     this.spoken = '';
-    const image = this.add.image(slotLeft(slot) + slotWidth(slot) / 2, slotTop(slot) + 20, `item_${productId}`).setScale(ITEM_SCALE).setDepth(9);
+    const image = this.add.image(x, y, `item_${productId}`).setScale(ITEM_SCALE).setDepth(9);
     const item: TableItem = { productId, image };
     this.table.push(item);
     image.setInteractive({ useHandCursor: true }).on('pointerup', () => this.takeBack(item));
     this.layoutTable();
-    this.refreshShelves();
 
     if (isOrderComplete(customer.wants, session.table)) {
       this.time.delayedCall(PAYMENT_DELAY_MS, () => {
@@ -753,6 +783,77 @@ export class ShackScene extends Phaser.Scene {
         }
       });
     }
+  }
+
+  /** A drink poured at an appliance's close-up goes on the counter, if the customer still wants it. */
+  private serveDrink(drinkId: string) {
+    const customer = this.current;
+    if (!customer || this.busy || this.readyToPay || customer.wants.length === 0) return;
+    if (!canAddToTable(customer.wants, session.table, drinkId) || this.table.length >= TABLE_CAPACITY) return;
+    if (!pourDrink(session.state, drinkId)) return;
+    sfx.pickUp();
+    const i = applianceFor(drinkId) === 'coffee' ? 0 : 1;
+    this.addToTable(customer, drinkId, bayLeft(i) + bayWidth(i) / 2, bayTop() + 20);
+    this.refreshBays();
+    this.renderBubble();
+  }
+
+  private tapBay(bay: (typeof BAYS)[number]) {
+    if (session.modal) return;
+    if (this.current?.greeting) return this.skipGreeting();
+    if (!owns(session.state, bay.id)) return this.showShelfNote(SHELF_ROWS, bay.note);
+    sfx.click();
+    this.openModal(bay.scene);
+  }
+
+  /** The machines in the bottom row, with how full they are. Only redrawn when that changes. */
+  private refreshBays(force = false) {
+    const st = session.state;
+    const status = [st.appliances.join(), st.coffeePot, Math.ceil(st.brewLeft), st.blenderJar, Math.ceil(st.blendLeft), st.stockroom.beans ?? 0].join('|');
+    if (status === this.bayStatus && !force) return;
+    this.bayStatus = status;
+    this.bayArt.forEach((o) => o.destroy());
+    this.bayArt = [];
+    const labelY = bayTop() + L.rowH - SHELF_LABEL_H;
+    const roomH = L.rowH - SHELF_LABEL_H - 8;
+    BAYS.forEach((bay, i) => {
+      const owned = owns(st, bay.id);
+      const g = this.add.graphics().setDepth(5.2);
+      this.bayArt.push(g);
+      const machine = bay.id === 'coffee' ? COFFEE_MACHINE : BLENDER;
+      const s = Math.min(1.2, roomH / machine.h);
+      const x = Math.round(bayLeft(i) + (bayWidth(i) - machine.w * s) / 2);
+      const y = Math.round(labelY - 2 - machine.h * s);
+      let line = '';
+      let right = '';
+      if (bay.id === 'coffee') {
+        const brewing = st.brewLeft > 0;
+        drawCoffeeMachine(g, x, y, s, brewing);
+        const c = COFFEE_MACHINE.carafe;
+        const level = brewing ? 1 - st.brewLeft / BREW_SECONDS : st.coffeePot / POT_CUPS;
+        const h = c.h * level;
+        if (owned && h > 0) g.fillStyle(COFFEE_COLOUR).fillRect(x + c.x * s, y + (c.y + c.h - h) * s, c.w * s, h * s);
+        line = 'COFFEE';
+        right = !owned ? '' : brewing ? 'BREWING' : `${st.coffeePot}/${POT_CUPS} CUPS`;
+      } else {
+        const blending = st.blendLeft > 0;
+        drawBlender(g, x, y, s, blending);
+        const j = BLENDER.jar;
+        if (owned && st.blenderJar) {
+          const colour = SMOOTHIE_COLOURS[st.blenderJar];
+          g.fillStyle(blending ? colour.light : colour.fill).fillRect(x + j.x * s, y + (j.y + j.h * 0.35) * s, j.w * s, j.h * 0.65 * s - s);
+        }
+        drawBlenderGlass(g, x, y, s);
+        line = 'BLENDER';
+        right = !owned ? '' : blending ? 'BLENDING' : st.blenderJar ? `${getProduct(st.blenderJar).name.split(' ')[0]} READY` : 'EMPTY';
+      }
+      if (!owned) {
+        g.setAlpha(0.35);
+        right = 'BUY IN UPGRADES';
+      }
+      this.bayArt.push(tinyLabel(this, bayLeft(i) + 3, labelY + 3, line, COLOURS.ink).setDepth(6));
+      this.bayArt.push(tinyLabel(this, bayLeft(i) + 3, labelY + 10, right, owned ? COLOURS.ink : COLOURS.dim).setDepth(6));
+    });
   }
 
   private takeBack(item: TableItem) {
@@ -1095,22 +1196,27 @@ export class ShackScene extends Phaser.Scene {
     }
 
     // The list: finished lines become a solid green row with a check mark
-    const listTop = hasList ? this.listBubbleTop(requestLines(customer.wants, session.table).length + (this.readyToPay ? 1 : 0)) : bubbleY();
+    const listTexts = requestLines(customer.wants, session.table).map((line) => {
+      const name = lineName(session.state, customer.wants, session.table, line);
+      return { line, text: line.done ? `\u2713 ${name}` : `${line.remaining} ${name}` };
+    });
+    const listTop = hasList ? this.listBubbleTop(listTexts.reduce((h, { text }) => h + listLineH(text), 0) + (this.readyToPay ? LIST_LINE_H : 0)) : bubbleY();
     let y = this.receiptLines === null ? listTop + 4 : this.receiptTop + receiptHeight(this.receiptLines, this.current?.paidByCash ?? false) + 11;
     if (hasList) {
       put(y, customer.name, NAME_INK, titleLabel);
       const ruleY = y + 8;
       y += 11;
-      requestLines(customer.wants, session.table).forEach((line) => {
-        const name = lineName(session.state, customer.wants, session.table, line);
+      // A long name wraps onto a second line, and the bubble grows to hold it.
+      listTexts.forEach(({ line, text }) => {
+        const h = listLineH(text);
         if (line.done) {
-          const row = this.add.rectangle(bubbleX() + 3, y - 1, bubbleW() - 6, 10, DONE_GREEN).setOrigin(0).setDepth(5.5);
+          const row = this.add.rectangle(bubbleX() + 3, y - 1, bubbleW() - 6, h - 1, DONE_GREEN).setOrigin(0).setDepth(5.5);
           this.bubbleLines.push(row);
-          put(y, `\u2713 ${name}`, COLOURS.white);
+          put(y, text, COLOURS.white);
         } else {
-          put(y, `${line.remaining} ${name}`, COLOURS.ink);
+          put(y, text, COLOURS.ink);
         }
-        y += 11;
+        y += h;
       });
       if (this.readyToPay) {
         const row = this.add.rectangle(bubbleX() + 3, y - 1, bubbleW() - 6, 10, PAY_ROW).setOrigin(0).setDepth(5.5);
@@ -1133,12 +1239,12 @@ export class ShackScene extends Phaser.Scene {
   }
 
   /** Normally level with the customer's face, but moves up if a comment below it would run into the counter's machines. */
-  private listBubbleTop(lines: number): number {
+  private listBubbleTop(linesH: number): number {
     if (!this.spoken) return bubbleY();
     const measure = label(this, 0, 0, this.spoken).setMaxWidth(bubbleW() - BUBBLE_PAD * 2);
     const spokenH = measure.height;
     measure.destroy();
-    const listH = 4 + 11 + lines * 11 + 2;
+    const listH = 4 + 11 + linesH + 2;
     const commentH = 3 + 4 + spokenH + 3;
     return Math.max(L.windowY + 3, Math.min(bubbleY(), L.counterTop - 8 - listH - commentH));
   }
@@ -1282,6 +1388,8 @@ export class ShackScene extends Phaser.Scene {
     if (session.phase === 'open' || session.phase === 'closing') {
       if (!this.current && !this.busy && !session.modal && this.queue.length > 0) this.callNext();
     }
+    if (session.phase !== 'summary') tickAppliances(session.state, dt);
+    this.refreshBays();
     this.tickDelivery(dt);
     this.updateRain(dt);
     this.updateGuide(dt);

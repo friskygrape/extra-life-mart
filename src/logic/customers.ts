@@ -1,5 +1,7 @@
 import { eventOnDay } from '../data/events';
-import { getProduct } from '../data/products';
+import { getProduct, isDrink, isShelfProduct } from '../data/products';
+import { drinksAvailable } from './appliances';
+import { sellableIds } from './licences';
 import { WEATHER } from '../data/weather';
 import { tagChoices, tagWant } from './basket';
 import { reputationCrowd } from './reputation';
@@ -21,13 +23,14 @@ export function crowdFactor(state: GameState): number {
 }
 
 function pickByDemand(state: GameState, rng: () => number): string {
-  const weights = state.unlocked.map((id) => snackDemand(state, id));
+  const ids = sellableIds(state);
+  const weights = ids.map((id) => snackDemand(state, id));
   let r = rng() * weights.reduce((sum, w) => sum + w, 0);
   for (let i = 0; i < weights.length; i++) {
     r -= weights[i];
-    if (r < 0) return state.unlocked[i];
+    if (r < 0) return ids[i];
   }
-  return state.unlocked[state.unlocked.length - 1];
+  return ids[ids.length - 1];
 }
 
 /** How often a customer asks for a kind of snack, like a cold drink, in place of one named item. */
@@ -39,6 +42,7 @@ export const TAG_CHANCE = 0.25;
  */
 function askForAKind(wants: string[], left: Map<string, number>, pick: <T>(items: T[]) => T) {
   const options = wants.flatMap((id, i) => {
+    if (!isShelfProduct(id)) return [];
     const free = new Map(left).set(id, (left.get(id) ?? 0) + 1);
     return tagChoices(free, getProduct(id).tag).length >= 2 ? [i] : [];
   });
@@ -64,6 +68,13 @@ export function buildRequest(state: GameState, rng: () => number = Math.random):
   const left = new Map<string, number>();
   for (const shelf of state.shelves) {
     if (shelf.productId && shelf.qty > 0) left.set(shelf.productId, (left.get(shelf.productId) ?? 0) + shelf.qty);
+  }
+  // Drinks count as there when they're made, or could be made from what's in stock.
+  for (const id of sellableIds(state)) {
+    if (isDrink(id)) {
+      const available = drinksAvailable(state, id);
+      if (available > 0) left.set(id, available);
+    }
   }
   const pick = <T,>(items: T[]) => items[Math.floor(rng() * items.length)];
 

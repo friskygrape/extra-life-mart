@@ -1,3 +1,5 @@
+import { isDrink } from '../data/products';
+import { returnDrink } from './appliances';
 import { SHELF_CAPACITY } from '../data/products';
 import type { GameState, ShelfState } from './state';
 
@@ -55,6 +57,11 @@ export function takeFromShelf(state: GameState, shelfId: string, productId: stri
 
 /** Puts one unit back: on a shelf already holding it, else an empty shelf, else in stock. */
 export function returnItem(state: GameState, productId: string): void {
+  // A drink goes back into its pot or jar if there's room; otherwise it's poured away.
+  if (isDrink(productId)) {
+    returnDrink(state, productId);
+    return;
+  }
   const shelf =
     state.shelves.find((s) => s.productId === productId && s.qty < SHELF_CAPACITY) ??
     state.shelves.find((s) => s.qty === 0);

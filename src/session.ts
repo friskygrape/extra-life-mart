@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { clockLabel } from './logic/clock';
 import { loadGame, saveGame, clearSave, type SaveStore } from './logic/save';
+import { finishAppliances } from './logic/appliances';
 import { newGame, type GameState } from './logic/state';
 
 export type Phase = 'morning' | 'open' | 'closing' | 'summary';
@@ -30,7 +31,7 @@ function dayLengthSeconds(): number {
 }
 
 class Session {
-  state: GameState = loadGame(store()) ?? newGame();
+  state: GameState = loadedGame();
   phase: Phase = 'morning';
   modal = false;
   clock = 0;
@@ -74,3 +75,10 @@ class Session {
 }
 
 export const session = new Session();
+
+/** The saved game, with any machine that was running when it was saved now finished. */
+function loadedGame(): GameState {
+  const state = loadGame(store()) ?? newGame();
+  finishAppliances(state);
+  return state;
+}
