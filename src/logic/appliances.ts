@@ -15,7 +15,9 @@ export function buyAppliance(state: GameState, id: ApplianceId): boolean {
 }
 
 /** The appliance that makes a drink. */
-export const applianceFor = (drinkId: string): ApplianceId => (drinkId === 'coffee' ? 'coffee' : 'blender');
+/** Hot and iced coffee both pour from the same pot. */
+export const isCoffee = (drinkId: string) => drinkId === 'coffee' || drinkId === 'iced_coffee';
+export const applianceFor = (drinkId: string): ApplianceId => (isCoffee(drinkId) ? 'coffee' : 'blender');
 
 /** A fresh pot can only go on once the last one is finished. */
 export const canBrew = (state: GameState) => owns(state, 'coffee') && state.coffeePot === 0 && state.brewLeft === 0 && (state.stockroom.beans ?? 0) > 0;
@@ -50,6 +52,14 @@ export function tickAppliances(state: GameState, dt: number): void {
   if (state.blendLeft > 0) state.blendLeft = Math.max(0, state.blendLeft - dt);
 }
 
+/** Anything an owned appliance unlocks that an older save is missing, like iced coffee. */
+export function unlockOwned(state: GameState): void {
+  for (const appliance of APPLIANCES) {
+    if (!owns(state, appliance.id)) continue;
+    for (const id of appliance.unlocks) if (!state.unlocked.includes(id)) state.unlocked.push(id);
+  }
+}
+
 /** A machine left running when the game was saved has finished by the time it's loaded. */
 export function finishAppliances(state: GameState): void {
   tickAppliances(state, Math.max(state.brewLeft, state.blendLeft));
@@ -59,7 +69,7 @@ export const smoothieReady = (state: GameState) => state.blenderJar !== null && 
 
 /** Pours one drink, if there's one ready. */
 export function pourDrink(state: GameState, drinkId: string): boolean {
-  if (drinkId === 'coffee') {
+  if (isCoffee(drinkId)) {
     if (state.coffeePot <= 0) return false;
     state.coffeePot -= 1;
     return true;
@@ -78,6 +88,8 @@ export function emptyBlender(state: GameState): boolean {
 
 /** A drink taken back off the counter goes back where it came from, if there's room. */
 export function returnDrink(state: GameState, drinkId: string): boolean {
+  // Iced coffee can't go back in the pot, so it's poured away.
+  if (drinkId === 'iced_coffee') return false;
   if (drinkId === 'coffee') {
     if (state.coffeePot >= POT_CUPS || state.brewLeft > 0) return false;
     state.coffeePot += 1;
@@ -91,7 +103,7 @@ export function returnDrink(state: GameState, drinkId: string): boolean {
 /** How many of a drink could be served: what's made, plus what the ingredients in stock would make. */
 export function drinksAvailable(state: GameState, drinkId: string): number {
   if (!owns(state, applianceFor(drinkId))) return 0;
-  if (drinkId === 'coffee') {
+  if (isCoffee(drinkId)) {
     const brewing = state.brewLeft > 0 ? POT_CUPS : 0;
     return state.coffeePot + brewing + (state.stockroom.beans ?? 0) * POT_CUPS;
   }

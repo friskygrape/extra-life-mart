@@ -92,8 +92,31 @@ function smoothieCup(c: Ctx, colour: { fill: number; light: number }) {
   rect(c, 'rgba(255,255,255,0.5)', 8, 15, 20, 1);
 }
 
+/** An orange paper cup with ice showing at the top and a straw: the cup from the user's mock-up, until their art arrives. */
+function icedCoffeeCup(c: Ctx) {
+  for (let y = 1; y < 12; y++) rect(c, y % 4 < 2 ? '#2b2b30' : '#e8873a', 22 + Math.floor((12 - y) / 4), y, 2, 1);
+  // Ice above the rim
+  for (const [x, y] of [[9, 9], [15, 7], [21, 9]]) {
+    rect(c, '#cfeefc', x, y, 6, 5);
+    rect(c, '#ffffff', x, y, 3, 1);
+    rect(c, '#7fbfe6', x + 5, y + 1, 1, 4);
+  }
+  rect(c, '#3a1e10', 8, 13, 20, 2);
+  for (let y = 14; y < 44; y++) {
+    const inset = Math.floor((y - 14) / 6);
+    rect(c, '#f4ead8', 8 + inset, y, 20 - inset * 2, 1);
+  }
+  for (let y = 22; y < 36; y++) {
+    const inset = Math.floor((y - 14) / 6);
+    rect(c, '#e8873a', 8 + inset, y, 20 - inset * 2, 1);
+    rect(c, '#c86a26', 25 - inset, y, 3, 1);
+  }
+  rect(c, '#a8521c', 15, 26, 6, 6);
+}
+
 const ITEMS: Record<string, (c: Ctx) => void> = {
   coffee: coffeeCup,
+  iced_coffee: icedCoffeeCup,
   smoothie_mango: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_mango),
   smoothie_pineapple: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_pineapple),
   smoothie_watermelon: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_watermelon),

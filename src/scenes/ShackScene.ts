@@ -354,6 +354,7 @@ export class ShackScene extends Phaser.Scene {
 
     session.events.on('shelves-changed', this.refreshShelves, this);
     session.events.on('pour-drink', this.serveDrink, this);
+    session.events.on('serve-drink', (id: string) => this.serveDrink(id, true), this);
     session.events.on('begin-day', this.beginDay, this);
     session.events.on('say', this.say, this);
     session.events.on('receipt-feed', this.feedReceipt, this);
@@ -787,11 +788,11 @@ export class ShackScene extends Phaser.Scene {
   }
 
   /** A drink poured at an appliance's close-up goes on the counter, if the customer still wants it. */
-  private serveDrink(drinkId: string) {
+  private serveDrink(drinkId: string, poured = false) {
     const customer = this.current;
     if (!customer || this.busy || this.readyToPay || customer.wants.length === 0) return;
     if (!canAddToTable(customer.wants, session.table, drinkId) || this.table.length >= TABLE_CAPACITY) return;
-    if (!pourDrink(session.state, drinkId)) return;
+    if (!poured && !pourDrink(session.state, drinkId)) return;
     sfx.pickUp();
     const i = applianceFor(drinkId) === 'coffee' ? 0 : 1;
     this.addToTable(customer, drinkId, bayLeft(i) + bayWidth(i) / 2, bayTop() + 20);

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { clockLabel } from './logic/clock';
 import { loadGame, saveGame, clearSave, type SaveStore } from './logic/save';
-import { finishAppliances } from './logic/appliances';
+import { finishAppliances, unlockOwned } from './logic/appliances';
 import { newGame, type GameState } from './logic/state';
 
 export type Phase = 'morning' | 'open' | 'closing' | 'summary';
@@ -80,5 +80,6 @@ export const session = new Session();
 function loadedGame(): GameState {
   const state = loadGame(store()) ?? newGame();
   finishAppliances(state);
+  unlockOwned(state);
   return state;
 }

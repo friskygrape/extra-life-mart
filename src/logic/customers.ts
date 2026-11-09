@@ -1,6 +1,6 @@
 import { eventOnDay } from '../data/events';
 import { getProduct, isDrink, isShelfProduct } from '../data/products';
-import { drinksAvailable } from './appliances';
+import { drinksAvailable, isCoffee } from './appliances';
 import { sellableIds } from './licences';
 import { WEATHER } from '../data/weather';
 import { tagChoices, tagWant } from './basket';
@@ -87,6 +87,8 @@ export function buildRequest(state: GameState, rng: () => number = Math.random):
     if (available > 0) {
       wants.push(id);
       left.set(id, available - 1);
+      // Hot and iced coffee share one pot, so a cup of either uses up one of both.
+      if (isCoffee(id)) for (const other of ['coffee', 'iced_coffee']) if (other !== id && left.has(other)) left.set(other, left.get(other)! - 1);
     } else {
       wished.push(id);
     }

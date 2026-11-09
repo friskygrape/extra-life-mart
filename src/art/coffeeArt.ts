@@ -55,3 +55,47 @@ export function smallCoffeeImage(scene: Phaser.Scene, x: number, y: number, stat
   createSmallCoffee(scene, height);
   return scene.add.image(x, y, smallCoffeeKey(state, height)).setOrigin(0).setScale(1 / L.renderScale);
 }
+
+/**
+ * The coffee station from the user's mock-up: their counter with the beans jar, filters, cups and ice bin, and the
+ * machine and warmer, all at the mock-up's own pixels. The decanter has been taken off the warmer, since it moves.
+ * Positions are in the mock-up's pixels, from the top of this picture.
+ */
+export const STATION = {
+  key: 'coffee_station',
+  w: 1536,
+  h: 1330,
+  /** Rows above the counter's edge: only the top of the machine shows there, overlapping the counter. */
+  overCounter: 54,
+  power: { x: 420, y: 442, w: 24, h: 54 },
+  basket: { x: 505, y: 170, w: 230 },
+  drip: { x: 620, from: 272, to: 300 },
+  /** The decanter's size, and where its bottom-left stands in the machine and on the warmer. */
+  decanter: { h: 250, inMachine: { x: 516, y: 544 }, onWarmer: { x: 974, y: 570 } },
+  beans: { x: 44, y: 162, w: 296, h: 500 },
+  filters: { x: 50, y: 842, w: 430, h: 350 },
+  hotCups: { x: 564, y: 732, w: 171, h: 400 },
+  icedCups: { x: 750, y: 697, w: 190, h: 435 },
+  ice: { x: 980, y: 732, w: 530, h: 460 },
+  /** Where a cup stands to be filled and served: in front of the machine. */
+  cup: { x: 615, y: 742, h: 230 },
+  /** The wall above the warmer, clear for the close button and the hint. */
+  wall: { x: 900, y: 62, w: 620, h: 175 },
+};
+export const ICE_ART = { key: 'coffee_ice', w: 140, h: 94 };
+
+/** A copy of some art redrawn at a given size, smoothed, holding one pixel per screen pixel. */
+export function scaledTexture(scene: Phaser.Scene, srcKey: string, w: number, h: number): string {
+  const r = L.renderScale;
+  const key = `${srcKey}_at_${Math.round(w * r)}x${Math.round(h * r)}`;
+  if (!scene.textures.exists(key)) {
+    const tex = scene.textures.createCanvas(key, Math.max(1, Math.round(w * r)), Math.max(1, Math.round(h * r)))!;
+    const c = tex.getContext();
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(scene.textures.get(srcKey).getSourceImage() as HTMLImageElement, 0, 0, tex.width, tex.height);
+    tex.refresh();
+    tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+  }
+  return key;
+}

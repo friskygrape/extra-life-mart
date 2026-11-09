@@ -15,7 +15,7 @@ import { anyShelfStocked, emptyShelf, returnItem, stockShelf, takeFromShelf, tot
 import { buyLicence, buyShelfRow, lockedProducts, nextRowPrice, orderableProducts, unlockedProducts } from '../src/logic/licences';
 import { POT_CUPS } from '../src/data/appliances';
 import { decanterState } from '../src/logic/appliances';
-import { buyAppliance, drinksAvailable, emptyBlender, pourDrink, startBlend, startBrew, tickAppliances } from '../src/logic/appliances';
+import { buyAppliance, drinksAvailable, emptyBlender, pourDrink, startBlend, startBrew, tickAppliances, unlockOwned } from '../src/logic/appliances';
 import { customerTender, DENOMINATIONS, formatCents, roundToNickel, tenderBills } from '../src/logic/money';
 import { cartCost, deliverOrders, placeOrder, receiveOvernight, rushCost } from '../src/logic/orders';
 import { clearSave, loadGame, saveGame, type SaveStore } from '../src/logic/save';
@@ -1237,5 +1237,42 @@ describe('the coffee pot', () => {
     // One cup left is never shown as empty, and a part-full pot never as full
     expect(decanterState(1, 0)).not.toBe('empty');
     expect(decanterState(POT_CUPS - 1, 0)).not.toBe('full');
+  });
+});
+
+describe('iced coffee', () => {
+  const withPot = (cups: number) => {
+    const s = newGame();
+    s.balance = 100000;
+    buyAppliance(s, 'coffee');
+    s.unlocked = ['coffee', 'iced_coffee', 'beans'];
+    s.coffeePot = cups;
+    return s;
+  };
+  it('comes with the coffee machine and pours from the same pot as hot coffee', () => {
+    const s = withPot(2);
+    expect(s.appliances).toContain('coffee');
+    expect(pourDrink(s, 'iced_coffee')).toBe(true);
+    expect(pourDrink(s, 'coffee')).toBe(true);
+    expect(pourDrink(s, 'iced_coffee')).toBe(false);
+  });
+  it('never has customers asking for more coffee, hot or iced, than the pot holds', () => {
+    const s = withPot(1);
+    for (let i = 0; i < 300; i++) {
+      const coffees = buildRequest(s).wants.filter((w) => w === 'coffee' || w === 'iced_coffee');
+      expect(coffees.length).toBeLessThanOrEqual(1);
+    }
+  });
+  it('is poured away rather than going back in the pot', () => {
+    const s = withPot(1);
+    returnItem(s, 'iced_coffee');
+    expect(s.coffeePot).toBe(1);
+  });
+  it('is unlocked for anyone who already owned the coffee machine', () => {
+    const s = newGame();
+    s.appliances = ['coffee'];
+    s.unlocked.push('coffee', 'beans');
+    unlockOwned(s);
+    expect(s.unlocked).toContain('iced_coffee');
   });
 });

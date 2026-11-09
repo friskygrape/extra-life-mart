@@ -36,6 +36,7 @@ export const PRODUCTS: Product[] = [
   { id: 'shave', name: 'RAINBOW ICE', tag: 'frozen', kind: 'shelf', wholesale: 170, retail: 959, licence: 60000 },
   // Made at the appliances. Their cost is what their ingredients cost per drink.
   { id: 'coffee', name: 'COFFEE', tag: 'hot', kind: 'drink', wholesale: 133, retail: 429 },
+  { id: 'iced_coffee', name: 'ICED COFFEE', tag: 'drinks', kind: 'drink', wholesale: 133, retail: 479 },
   { id: 'smoothie_mango', name: 'MANGO SMOOTHIE', tag: 'drinks', kind: 'drink', wholesale: 150, retail: 549 },
   { id: 'smoothie_pineapple', name: 'PINEAPPLE SMOOTHIE', tag: 'drinks', kind: 'drink', wholesale: 150, retail: 549 },
   { id: 'smoothie_watermelon', name: 'WATERMELON SMOOTHIE', tag: 'drinks', kind: 'drink', wholesale: 150, retail: 549 },

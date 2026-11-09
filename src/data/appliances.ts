@@ -13,7 +13,7 @@ export interface Appliance {
 
 // TESTING: both are $1 for now. Planned prices: coffee machine 12000, blender 20000.
 export const APPLIANCES: Appliance[] = [
-  { id: 'coffee', name: 'COFFEE MACHINE', blurb: '3 CUPS A POT. USES BEANS', price: 100, unlocks: ['coffee', 'beans'] },
+  { id: 'coffee', name: 'COFFEE MACHINE', blurb: '3 CUPS A POT. USES BEANS', price: 100, unlocks: ['coffee', 'iced_coffee', 'beans'] },
   {
     id: 'blender',
     name: 'BLENDER',
