@@ -201,7 +201,7 @@ export class CoffeeScene extends Phaser.Scene {
   private filterIn = false;
   private beansIn = false;
   /** The cup set out to fill and serve. */
-  private cup: { kind: CupKind; filled: boolean; iced: boolean; image: Phaser.GameObjects.Image; ice?: Phaser.GameObjects.Image } | null = null;
+  private cup: { kind: CupKind; filled: boolean; iced: boolean; image: Phaser.GameObjects.Image } | null = null;
   private busy = false;
   private wasBrewing = false;
 
@@ -412,7 +412,14 @@ export class CoffeeScene extends Phaser.Scene {
     this.beansIn = false;
   }
 
-  /** A cup comes out of its stack to stand in front of the machine, and the pot fills it. */
+  /** The cup's art redrawn at its size at the station. */
+  private cupTexture(key: string) {
+    const h = STATION.cup.h * this.k;
+    const src = this.textures.get(key).getSourceImage() as HTMLImageElement;
+    return scaledTexture(this, key, (h * src.width) / src.height, h);
+  }
+
+  /** An empty cup comes out of its stack to stand in front of the machine, and the pot fills it. */
   private tapCups(kind: CupKind) {
     const st = session.state;
     const drink = CUP_DRINK[kind];
@@ -420,16 +427,15 @@ export class CoffeeScene extends Phaser.Scene {
     const h = STATION.cup.h * this.k;
     const spot = this.at(STATION.cup.x, STATION.cup.y);
     const from = this.centre(kind === 'hot' ? STATION.hotCups : STATION.icedCups);
-    this.fly(`item_${drink}`, from, { x: spot.x, y: spot.y - h / 2 }, h, () => {
-      const src = this.textures.get(`item_${drink}`).getSourceImage() as HTMLImageElement;
-      const w = (h * src.width) / src.height;
-      const image = this.add.image(spot.x, spot.y, scaledTexture(this, `item_${drink}`, w, h)).setOrigin(0.5, 1).setScale(1 / L.renderScale).setDepth(3);
+    const empty = `item_cup_${kind}_empty`;
+    this.fly(empty, from, { x: spot.x, y: spot.y - h / 2 }, h, () => {
+      const image = this.add.image(spot.x, spot.y, this.cupTexture(empty)).setOrigin(0.5, 1).setScale(1 / L.renderScale).setDepth(3);
       this.cup = { kind, filled: false, iced: false, image };
       this.pourInto();
     });
   }
 
-  /** The decanter comes off its warmer, tips over the cup and pours, then goes back. */
+  /** The decanter comes off its warmer, tips over the cup and pours, and the coffee rises in the cup. */
   private pourInto() {
     const cup = this.cup!;
     const st = session.state;
@@ -438,7 +444,6 @@ export class CoffeeScene extends Phaser.Scene {
     sfx.click();
     const spot = this.at(STATION.cup.x, STATION.cup.y - STATION.cup.h);
     const spout = { x: spot.x - 4 * this.k, y: spot.y - 40 * this.k };
-    // Show the pot as it was before this cup came out of it, while it pours
     this.tweens.add({
       targets: this.decanter,
       x: spout.x,
@@ -448,8 +453,23 @@ export class CoffeeScene extends Phaser.Scene {
       ease: 'Quad.easeOut',
       onComplete: () => {
         const stream = this.add.rectangle(spout.x, spout.y, Math.max(2, 8 * this.k), spot.y - spout.y + 16 * this.k, COFFEE_COLOUR).setOrigin(0.5, 0).setDepth(2.5);
+        // The full cup is laid over the empty one and shown from the bottom up, so the coffee rises.
+        const fullKey = this.cupTexture(`item_cup_${cup.kind}_full`);
+        const full = this.add.image(cup.image.x, cup.image.y, fullKey).setOrigin(0.5, 1).setScale(1 / L.renderScale).setDepth(3.1);
+        const tw = full.frame.width;
+        const th = full.frame.height;
+        const level = { p: 0 };
+        full.setCrop(0, th, tw, 0);
+        this.tweens.add({
+          targets: level,
+          p: 1,
+          duration: POUR_MS,
+          onUpdate: () => full.setCrop(0, th * (1 - level.p), tw, th * level.p),
+        });
         this.time.delayedCall(POUR_MS, () => {
           stream.destroy();
+          full.destroy();
+          cup.image.setTexture(fullKey);
           cup.filled = true;
           const home = this.decanterSpot('onWarmer');
           this.tweens.add({ targets: this.decanter, x: home.x, y: home.y, angle: 0, duration: 300, ease: 'Quad.easeInOut', onComplete: () => (this.busy = false) });
@@ -458,7 +478,7 @@ export class CoffeeScene extends Phaser.Scene {
     });
   }
 
-  /** A scoop from the ice bin for an iced coffee. */
+  /** A scoop from the ice bin drops into an iced coffee. */
   private tapIce() {
     const cup = this.cup;
     if (!cup || cup.kind !== 'iced' || !cup.filled || cup.iced) return sfx.error();
@@ -467,28 +487,27 @@ export class CoffeeScene extends Phaser.Scene {
     this.fly(ICE_ART.key, this.centre(STATION.ice), top, h, () => {
       sfx.pickUp();
       cup.iced = true;
-      const w = (h * ICE_ART.w) / ICE_ART.h;
-      cup.ice = this.add.image(top.x, top.y + h * 0.35, scaledTexture(this, ICE_ART.key, w * 0.8, h * 0.8)).setOrigin(0.5, 1).setScale(1 / L.renderScale).setDepth(3.5);
+      cup.image.setTexture(this.cupTexture('item_iced_coffee'));
     });
   }
 
-  /** A full cup goes up to the counter for the customer. */
+  /** A full cup goes up to the counter for the customer; a hot one gets its lid first. */
   private tapCup() {
     const cup = this.cup;
     if (!cup || !cup.filled) return sfx.error();
     if (cup.kind === 'iced' && !cup.iced) return sfx.error();
     const drink = CUP_DRINK[cup.kind];
+    if (cup.kind === 'hot') cup.image.setTexture(this.cupTexture('item_coffee'));
     this.busy = true;
     sfx.pickUp();
     this.tweens.add({
-      targets: [cup.image, cup.ice].filter(Boolean),
+      targets: cup.image,
       y: this.top - 10,
       alpha: 0,
       duration: 320,
       ease: 'Quad.easeIn',
       onComplete: () => {
         cup.image.destroy();
-        cup.ice?.destroy();
         this.cup = null;
         this.busy = false;
         session.events.emit('serve-drink', drink);

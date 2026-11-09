@@ -50,27 +50,96 @@ function outline(c: Ctx) {
   }
 }
 
-/** A paper cup with a lid and a sleeve. */
+// The shop's colours, from the Extra Life Mart sign.
+const BRAND_TEAL = '#2f9c98';
+const BRAND_TEAL_DARK = '#227773';
+const BRAND_ORANGE = '#ec7a35';
+const BRAND_CREAM = '#fff4dc';
+const COFFEE = '#4a2a16';
+
+/** How far in each side of a cup is at row y, so it narrows to the bottom. */
+const cupInset = (y: number) => Math.floor((y - 14) / 6);
+
+/** The sign's star, 5 pixels across, centred on (cx, cy). */
+function star(c: Ctx, colour: string, cx: number, cy: number) {
+  rect(c, colour, cx, cy - 2);
+  rect(c, colour, cx - 2, cy - 1, 5, 1);
+  rect(c, colour, cx - 1, cy, 3, 1);
+  rect(c, colour, cx - 1, cy + 1);
+  rect(c, colour, cx + 1, cy + 1);
+}
+
+/** The shop's paper cup: white, with a teal band and the sign's cream badge and orange star. */
+function hotCupBody(c: Ctx) {
+  for (let y = 14; y < 44; y++) {
+    const i = cupInset(y);
+    rect(c, '#fbf8f2', 8 + i, y, 20 - i * 2, 1);
+    rect(c, '#e2dccf', 26 - i, y, 2, 1);
+  }
+  for (let y = 22; y < 35; y++) {
+    const i = cupInset(y);
+    rect(c, BRAND_TEAL, 8 + i, y, 20 - i * 2, 1);
+    rect(c, BRAND_TEAL_DARK, 26 - i, y, 2, 1);
+  }
+  rect(c, BRAND_ORANGE, 9, 22, 18, 1);
+  rect(c, BRAND_ORANGE, 10, 34, 16, 1);
+  // The badge
+  rect(c, BRAND_CREAM, 14, 25, 7, 7);
+  rect(c, BRAND_CREAM, 13, 26, 9, 5);
+  star(c, BRAND_ORANGE, 17, 28);
+}
+
+/** The cup's open top: its rim, and inside it either the empty cup or the coffee. */
+function openTop(c: Ctx, full: boolean) {
+  rect(c, '#fbf8f2', 7, 12, 22, 2);
+  rect(c, full ? COFFEE : '#d9d1c2', 9, 13, 18, 1);
+  if (full) rect(c, '#7a4a2a', 11, 13, 4, 1);
+}
+
+/** The shop's paper cup, open, as it's set out under the machine. */
+function hotCupOpen(c: Ctx, full: boolean) {
+  hotCupBody(c);
+  openTop(c, full);
+}
+
+/** The shop's paper cup of hot coffee, lidded and steaming, as it's served. */
 function coffeeCup(c: Ctx) {
-  // Steam
   for (const [x, y] of [[13, 2], [14, 4], [13, 6], [21, 1], [22, 3], [21, 5]]) rect(c, 'rgba(255,255,255,0.75)', x, y, 1, 2);
-  // Lid
-  rect(c, '#efeae0', 8, 9, 20, 2);
+  rect(c, '#efeae0', 9, 9, 18, 2);
   rect(c, '#d8d0c2', 7, 11, 22, 3);
   rect(c, '#bdb4a4', 7, 13, 22, 1);
-  // Cup, narrowing to the bottom
+  hotCupBody(c);
+}
+
+/**
+ * The clear plastic cup for iced coffee, which you can see through: empty, with coffee, or with coffee and ice.
+ * Only the orange star printed on it and the orange straw say it's the shop's.
+ */
+function icedCup(c: Ctx, fill: 'empty' | 'coffee' | 'iced') {
+  const top = fill === 'iced' ? 16 : 19;
+  if (fill === 'iced') for (let y = 1; y < 14; y++) rect(c, y % 4 < 2 ? BRAND_ORANGE : '#ffffff', 21 + Math.floor((14 - y) / 5), y, 2, 1);
   for (let y = 14; y < 44; y++) {
-    const inset = Math.floor((y - 14) / 6);
-    rect(c, '#fbf8f2', 9 + inset, y, 18 - inset * 2, 1);
-    rect(c, '#e2dccf', 25 - inset, y, 2, 1);
+    const i = cupInset(y);
+    const left = 8 + i;
+    const w = 20 - i * 2;
+    // The plastic, faintly blue, with the coffee showing through it
+    rect(c, fill !== 'empty' && y >= top ? 'rgba(92,52,26,0.62)' : 'rgba(214,236,246,0.28)', left, y, w, 1);
+    rect(c, 'rgba(255,255,255,0.75)', left, y, 1, 1);
+    rect(c, 'rgba(255,255,255,0.35)', left + 2, y, 1, 1);
+    rect(c, 'rgba(150,185,205,0.7)', left + w - 1, y, 1, 1);
   }
-  // Sleeve
-  for (let y = 23; y < 34; y++) {
-    const inset = Math.floor((y - 14) / 6);
-    rect(c, '#9a6236', 9 + inset, y, 18 - inset * 2, 1);
+  if (fill !== 'empty') rect(c, 'rgba(150,100,62,0.85)', 9, top, 18, 1);
+  if (fill === 'iced') {
+    // Cubes floating in the coffee, a couple poking out of the top
+    for (const [x, y] of [[10, 14], [16, 15], [21, 14], [12, 20], [19, 21], [14, 27]]) {
+      rect(c, 'rgba(225,244,252,0.7)', x, y, 5, 4);
+      rect(c, 'rgba(255,255,255,0.9)', x, y, 2, 1);
+    }
   }
-  rect(c, '#c48a52', 11, 24, 12, 1);
-  rect(c, '#f4e3c4', 16, 27, 4, 4);
+  // The rim, and the bottom
+  rect(c, 'rgba(235,248,255,0.9)', 7, 12, 22, 2);
+  rect(c, 'rgba(180,210,225,0.8)', 12, 43, 12, 1);
+  star(c, BRAND_ORANGE, 17, 34);
 }
 
 /** A clear cup of smoothie with a domed lid and a straw. */
@@ -92,31 +161,14 @@ function smoothieCup(c: Ctx, colour: { fill: number; light: number }) {
   rect(c, 'rgba(255,255,255,0.5)', 8, 15, 20, 1);
 }
 
-/** An orange paper cup with ice showing at the top and a straw: the cup from the user's mock-up, until their art arrives. */
-function icedCoffeeCup(c: Ctx) {
-  for (let y = 1; y < 12; y++) rect(c, y % 4 < 2 ? '#2b2b30' : '#e8873a', 22 + Math.floor((12 - y) / 4), y, 2, 1);
-  // Ice above the rim
-  for (const [x, y] of [[9, 9], [15, 7], [21, 9]]) {
-    rect(c, '#cfeefc', x, y, 6, 5);
-    rect(c, '#ffffff', x, y, 3, 1);
-    rect(c, '#7fbfe6', x + 5, y + 1, 1, 4);
-  }
-  rect(c, '#3a1e10', 8, 13, 20, 2);
-  for (let y = 14; y < 44; y++) {
-    const inset = Math.floor((y - 14) / 6);
-    rect(c, '#f4ead8', 8 + inset, y, 20 - inset * 2, 1);
-  }
-  for (let y = 22; y < 36; y++) {
-    const inset = Math.floor((y - 14) / 6);
-    rect(c, '#e8873a', 8 + inset, y, 20 - inset * 2, 1);
-    rect(c, '#c86a26', 25 - inset, y, 3, 1);
-  }
-  rect(c, '#a8521c', 15, 26, 6, 6);
-}
-
 const ITEMS: Record<string, (c: Ctx) => void> = {
   coffee: coffeeCup,
-  iced_coffee: icedCoffeeCup,
+  iced_coffee: (c) => icedCup(c, 'iced'),
+  // The cups at the coffee station, before they're served
+  cup_hot_empty: (c) => hotCupOpen(c, false),
+  cup_hot_full: (c) => hotCupOpen(c, true),
+  cup_iced_empty: (c) => icedCup(c, 'empty'),
+  cup_iced_full: (c) => icedCup(c, 'coffee'),
   smoothie_mango: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_mango),
   smoothie_pineapple: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_pineapple),
   smoothie_watermelon: (c) => smoothieCup(c, SMOOTHIE_COLOURS.smoothie_watermelon),
