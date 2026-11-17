@@ -437,9 +437,10 @@ let scheduled = 0;
 
 function readEnabled(): boolean {
   try {
-    return window.localStorage.getItem(MUSIC_KEY) !== '0';
+    // Off until the player turns it on.
+    return window.localStorage.getItem(MUSIC_KEY) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 
